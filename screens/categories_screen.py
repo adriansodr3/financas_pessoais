@@ -2,10 +2,9 @@ from kivy.lang import Builder
 from kivy.metrics import dp
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.gridlayout import GridLayout
-from kivy.uix.behaviors import ButtonBehavior
+from kivy.uix.button import Button
 from kivymd.uix.screen import MDScreen
 from kivymd.uix.boxlayout import MDBoxLayout
-from kivymd.uix.card import MDCard
 from kivymd.uix.label import MDLabel
 from kivymd.uix.button import MDRaisedButton, MDFlatButton
 from kivymd.uix.list import MDList, OneLineIconListItem, IconLeftWidget
@@ -17,27 +16,13 @@ from screens.widgets import confirm_dialog, BG, CARD_BG, PURPLE, GREEN, RED, WHI
 from models.category import CategoryModel
 
 EMOJIS = [
-    "💰","💸","🏠","🛒","🚗","❤️","📚","🎉","📋","💻",
-    "🍕","🎮","👕","💊","✈️","📱","🎵","🐾","🌿","💼",
-    "🏋","🎓","🎬","☕","🔧","🎸","🌟","⛽","🚌","🏥",
-    "💡","🎁","🍔","🧴","🏖","🐶","💈","🔑","🎯","🧾",
+    "💰","💸","🏠","🛒","🚗","❤","📚","🎉","📋","💻",
+    "🍕","🎮","👕","💊","✈","📱","🎵","🐾","🌿","💼",
+    "🏋","🎓","🎬","☕","🔧","🎸","🌟","⛽","🏥","💡",
+    "🎁","🍔","🧴","🐶","🔑","🎯","🧾","🚌","💈","📦",
 ]
 
 Builder.load_string("""
-<EmojiTile>:
-    halign: "center"
-    valign: "middle"
-    font_size: dp(22)
-    size_hint: None, None
-    size: dp(48), dp(48)
-    canvas.before:
-        Color:
-            rgba: (0.20, 0.22, 0.30, 1) if self.state == "down" else (0.13, 0.14, 0.20, 1)
-        RoundedRectangle:
-            pos: self.pos
-            size: self.size
-            radius: [dp(8)]
-
 <CategoriesScreen>:
     name: "tab_categories"
     md_bg_color: 0.06, 0.07, 0.09, 1
@@ -70,16 +55,12 @@ Builder.load_string("""
 """)
 
 
-class EmojiTile(ButtonBehavior, MDLabel):
-    pass
-
-
 class CategoriesScreen(MDScreen):
     def __init__(self, **kw):
         super().__init__(**kw)
         self._sel_type  = "expense"
         self._sel_emoji = "💰"
-        self._emoji_lbl = None
+        self._emoji_btn = None
 
     def refresh(self):
         app = MDApp.get_running_app()
@@ -90,8 +71,9 @@ class CategoriesScreen(MDScreen):
         for cat in CategoryModel.get_all(uid):
             is_inc = cat["type"] == "income"
             item = OneLineIconListItem(
-                text="{} {}  [{}]".format(cat.get("icon",""), cat["name"],
-                                           "Entrada" if is_inc else "Despesa"),
+                text="{} {}  [{}]".format(
+                    cat.get("icon",""), cat["name"],
+                    "Entrada" if is_inc else "Despesa"),
                 on_release=lambda x, c=dict(cat): self._on_item(c))
             ico = IconLeftWidget(
                 icon="arrow-up-circle-outline" if is_inc else "arrow-down-circle-outline",
@@ -115,55 +97,60 @@ class CategoriesScreen(MDScreen):
         self._sel_type  = "expense"
         self._sel_emoji = "💰"
 
-        content = MDBoxLayout(orientation="vertical", spacing=dp(8),
-                              size_hint_y=None, height=dp(340), padding=[0, dp(8), 0, 0])
+        # --- conteúdo do dialog ---
+        content = MDBoxLayout(orientation="vertical", spacing=dp(6),
+                              size_hint_y=None, height=dp(360), padding=[0, dp(4), 0, 0])
 
         f_name = MDTextField(hint_text="Nome da categoria", mode="rectangle",
                              size_hint_y=None, height=dp(52))
 
+        # Tipo
         btn_type = MDRaisedButton(text="Despesa", size_hint=(1,None), height=dp(44), md_bg_color=RED)
         def open_type(btn):
             from kivymd.uix.menu import MDDropdownMenu
             items = [{"text": nm, "viewclass": "OneLineListItem",
                       "on_release": lambda t=tp, n=nm: (
-                          setattr(self,"_sel_type",t),
-                          btn.__setattr__("text",n),
+                          setattr(self, "_sel_type", t),
+                          btn.__setattr__("text", n),
                           btn.__setattr__("md_bg_color", RED if t=="expense" else GREEN),
                           menu.dismiss()
-                      )} for tp,nm in [("expense","Despesa"),("income","Entrada")]]
+                      )} for tp, nm in [("expense","Despesa"),("income","Entrada")]]
             menu = MDDropdownMenu(caller=btn, items=items, width_mult=3)
             menu.open()
         btn_type.bind(on_release=open_type)
 
-        # Emoji selecionado (mostra o atual)
-        self._emoji_lbl = MDRaisedButton(
-            text="Emoji: {}".format(self._sel_emoji),
+        # Emoji selecionado
+        self._emoji_btn = MDRaisedButton(
+            text="Icone selecionado: 💰",
             size_hint=(1,None), height=dp(44), md_bg_color=CARD_BG)
 
-        # Grid de emojis com EmojiTile (ButtonBehavior + MDLabel)
-        lbl_pick = MDLabel(text="Toque para escolher o icone:",
-                           font_style="Caption", theme_text_color="Secondary",
-                           size_hint_y=None, height=dp(20))
+        lbl = MDLabel(text="Escolha um icone:",
+                      font_style="Caption", theme_text_color="Secondary",
+                      size_hint_y=None, height=dp(20))
 
-        emoji_sv = ScrollView(size_hint=(1,None), height=dp(110),
-                              do_scroll_y=True, do_scroll_x=False)
-        grid = GridLayout(cols=7, spacing=dp(4), padding=dp(2),
-                          size_hint_y=None)
+        # Grid de emojis usando Button nativo (mais compatível no Android)
+        sv = ScrollView(size_hint=(1,None), height=dp(120), do_scroll_x=False)
+        grid = GridLayout(cols=8, spacing=dp(2), padding=dp(2), size_hint_y=None)
         grid.bind(minimum_height=grid.setter("height"))
 
-        def set_emoji(e):
-            self._sel_emoji = e
-            if self._emoji_lbl:
-                self._emoji_lbl.text = "Emoji: {}".format(e)
+        def make_emoji_btn(e):
+            b = Button(
+                text=e, font_size="20sp",
+                size_hint=(None, None), size=(dp(42), dp(42)),
+                background_normal="", background_color=(0.13,0.14,0.20,1))
+            def on_press(instance, emoji=e):
+                self._sel_emoji = emoji
+                if self._emoji_btn:
+                    self._emoji_btn.text = "Icone selecionado: {}".format(emoji)
+            b.bind(on_release=on_press)
+            return b
 
         for e in EMOJIS:
-            tile = EmojiTile(text=e)
-            tile.bind(on_release=lambda x, emoji=e: set_emoji(emoji))
-            grid.add_widget(tile)
+            grid.add_widget(make_emoji_btn(e))
 
-        emoji_sv.add_widget(grid)
+        sv.add_widget(grid)
 
-        for w in [f_name, btn_type, lbl_pick, self._emoji_lbl, emoji_sv]:
+        for w in [f_name, btn_type, lbl, self._emoji_btn, sv]:
             content.add_widget(w)
 
         dlg = [None]
