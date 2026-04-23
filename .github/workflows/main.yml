@@ -13,6 +13,27 @@ jobs:
       - name: Checkout codigo
         uses: actions/checkout@v4
 
+      - name: Extrair ZIP se necessario
+        run: |
+          echo "=== Conteudo do repositorio ==="
+          ls -la
+          if ls *.zip 1>/dev/null 2>&1; then
+            echo "ZIP encontrado, extraindo..."
+            unzip -o *.zip
+            PASTA=$(unzip -l *.zip | awk 'NR==4{print $4}' | cut -d'/' -f1)
+            echo "Pasta extraida: $PASTA"
+            if [ -d "$PASTA" ]; then
+              cp -r $PASTA/. .
+              rm -rf $PASTA
+            fi
+            rm -f *.zip
+            echo "=== Apos extracao ==="
+            ls -la
+          else
+            echo "Arquivos ja estao na raiz."
+          fi
+          cat buildozer.spec || echo "ERRO: buildozer.spec nao encontrado!"
+
       - name: Configurar Python 3.11
         uses: actions/setup-python@v5
         with:
@@ -35,7 +56,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.buildozer
-          key: buildozer-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}-v2
+          key: buildozer-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}-v3
           restore-keys: |
             buildozer-${{ runner.os }}-
 
