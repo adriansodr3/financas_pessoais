@@ -320,3 +320,19 @@ class InstallmentModel:
             conn.commit()
         finally:
             conn.close()
+
+    @staticmethod
+    def delete_fixed_month(uid, tx_id, fixed_expense_id, year, month):
+        """Exclui lancamento fixo de um mes especifico: marca como skipped + deleta (atomico)."""
+        month_str = f"{year:04d}-{month:02d}"
+        conn = get_connection()
+        try:
+            # 1) Marca como pulado ANTES de deletar (evita que materialize recrie)
+            conn.execute(
+                "INSERT OR IGNORE INTO fixed_skipped (user_id,fixed_expense_id,month) VALUES (?,?,?)",
+                (uid, fixed_expense_id, month_str))
+            # 2) Deleta a instancia do mes
+            conn.execute("DELETE FROM transactions WHERE id=? AND user_id=?", (tx_id, uid))
+            conn.commit()
+        finally:
+            conn.close()

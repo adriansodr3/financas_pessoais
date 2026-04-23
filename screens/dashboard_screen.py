@@ -229,8 +229,8 @@ class DashboardScreen(MDScreen):
 
         self.ids.lbl_income.text  = fmt_currency(income + max(prev, 0))
         self.ids.lbl_expense.text = fmt_currency(expense)
-        self.ids.lbl_balance.text = fmt_currency(balance)
-        self.ids.lbl_balance.text_color = GREEN if balance >= 0 else RED
+        self.ids.lbl_balance.text = fmt_currency(income_w - expense)
+        self.ids.lbl_balance.text_color = GREEN if (income_w - expense) >= 0 else RED
         self.ids.lbl_fixed.text   = fmt_currency(fixed)
         self.ids.lbl_pending.text = fmt_currency(pending)
 

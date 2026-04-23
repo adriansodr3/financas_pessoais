@@ -114,20 +114,22 @@ class TransactionsScreen(MDScreen):
 
         def on_del(*a):
             dlg[0].dismiss()
-            # Buscar fixed_expense_id do banco se necessario
-            feid = t.get("fixed_expense_id")
-            if is_fixed and not feid:
+            if is_fixed:
+                # Busca fixed_expense_id do banco (garante valor correto)
                 from database.schema import get_connection
                 conn = get_connection()
                 row = conn.execute(
                     "SELECT fixed_expense_id FROM transactions WHERE id=?",
                     (t["id"],)).fetchone()
                 conn.close()
-                if row:
-                    feid = row["fixed_expense_id"]
-            TransactionModel.delete(t["id"], uid)
-            if is_fixed and feid:
-                TransactionModel.mark_fixed_skipped(uid, feid, self.year, self.month)
+                feid = (row["fixed_expense_id"] if row else None) or t.get("fixed_expense_id")
+                if feid:
+                    # Atomico: marca skipped + deleta numa unica transacao SQL
+                    TransactionModel.delete_fixed_month(uid, t["id"], feid, self.year, self.month)
+                else:
+                    TransactionModel.delete(t["id"], uid)
+            else:
+                TransactionModel.delete(t["id"], uid)
             self.refresh()
 
         def on_edit(*a):

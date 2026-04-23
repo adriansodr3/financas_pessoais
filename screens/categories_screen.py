@@ -1,11 +1,11 @@
-import os
 from kivy.lang import Builder
 from kivy.metrics import dp
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.gridlayout import GridLayout
-from kivy.core.text import LabelBase
+from kivy.uix.behaviors import ButtonBehavior
 from kivymd.uix.screen import MDScreen
 from kivymd.uix.boxlayout import MDBoxLayout
+from kivymd.uix.card import MDCard
 from kivymd.uix.label import MDLabel
 from kivymd.uix.button import MDRaisedButton, MDFlatButton
 from kivymd.uix.list import MDList, OneLineIconListItem, IconLeftWidget
@@ -16,36 +16,28 @@ from kivymd.app import MDApp
 from screens.widgets import confirm_dialog, BG, CARD_BG, PURPLE, GREEN, RED, WHITE
 from models.category import CategoryModel
 
-# Tentar registrar font com suporte a emoji do sistema Android
-_EMOJI_FONT = "Roboto"
-for _path in [
-    "/system/fonts/NotoColorEmoji.ttf",
-    "/system/fonts/NotoEmoji-Regular.ttf",
-    "/system/fonts/AndroidEmoji.ttf",
-]:
-    if os.path.exists(_path):
-        try:
-            LabelBase.register(name="EmojiFont", fn_regular=_path)
-            _EMOJI_FONT = "EmojiFont"
-        except Exception:
-            pass
-        break
-
-# Categorias pre-definidas: (label exibido, icone salvo no banco)
-CATEGORIAS = [
-    ("Casa",       "🏠"), ("Mercado",    "🛒"), ("Carro",      "🚗"),
-    ("Saude",      "❤"), ("Educacao",   "📚"), ("Lazer",      "🎉"),
-    ("Contas",     "📋"), ("Trabalho",   "💼"), ("Comida",     "🍕"),
-    ("Celular",    "📱"), ("Musica",     "🎵"), ("Academia",   "🏋"),
-    ("Viagem",     "✈"), ("Roupas",     "👕"), ("Farmacia",   "💊"),
-    ("Salario",    "💰"), ("Freelance",  "💻"), ("Investim.",  "📈"),
-    ("Presente",   "🎁"), ("Combustivel","⛽"), ("Transporte", "🚌"),
-    ("Cafe",       "☕"), ("Cerveja",    "🍺"), ("Streaming",  "🎬"),
-    ("Pet",        "🐾"), ("Planta",     "🌿"), ("Ferram.",    "🔧"),
-    ("Estrela",    "⭐"), ("Outros",     "💸"), ("+",          "+"),
+EMOJIS = [
+    "💰","💸","🏠","🛒","🚗","❤️","📚","🎉","📋","💻",
+    "🍕","🎮","👕","💊","✈️","📱","🎵","🐾","🌿","💼",
+    "🏋","🎓","🎬","☕","🔧","🎸","🌟","⛽","🚌","🏥",
+    "💡","🎁","🍔","🧴","🏖","🐶","💈","🔑","🎯","🧾",
 ]
 
 Builder.load_string("""
+<EmojiTile>:
+    halign: "center"
+    valign: "middle"
+    font_size: dp(22)
+    size_hint: None, None
+    size: dp(48), dp(48)
+    canvas.before:
+        Color:
+            rgba: (0.20, 0.22, 0.30, 1) if self.state == "down" else (0.13, 0.14, 0.20, 1)
+        RoundedRectangle:
+            pos: self.pos
+            size: self.size
+            radius: [dp(8)]
+
 <CategoriesScreen>:
     name: "tab_categories"
     md_bg_color: 0.06, 0.07, 0.09, 1
@@ -78,11 +70,16 @@ Builder.load_string("""
 """)
 
 
+class EmojiTile(ButtonBehavior, MDLabel):
+    pass
+
+
 class CategoriesScreen(MDScreen):
     def __init__(self, **kw):
         super().__init__(**kw)
         self._sel_type  = "expense"
-        self._sel_icon  = "💸"
+        self._sel_emoji = "💰"
+        self._emoji_lbl = None
 
     def refresh(self):
         app = MDApp.get_running_app()
@@ -92,11 +89,9 @@ class CategoriesScreen(MDScreen):
         self.ids.cat_list.clear_widgets()
         for cat in CategoryModel.get_all(uid):
             is_inc = cat["type"] == "income"
-            icon_txt = cat.get("icon") or ""
             item = OneLineIconListItem(
-                text="{}  {}  [{}]".format(
-                    icon_txt, cat["name"],
-                    "Entrada" if is_inc else "Despesa"),
+                text="{} {}  [{}]".format(cat.get("icon",""), cat["name"],
+                                           "Entrada" if is_inc else "Despesa"),
                 on_release=lambda x, c=dict(cat): self._on_item(c))
             ico = IconLeftWidget(
                 icon="arrow-up-circle-outline" if is_inc else "arrow-down-circle-outline",
@@ -111,19 +106,17 @@ class CategoriesScreen(MDScreen):
             self.refresh()
         confirm_dialog(
             "Excluir categoria",
-            "{}  {}\nLancamentos existentes nao serao afetados.".format(
+            "{} {}\nLancamentos existentes nao serao afetados.".format(
                 cat.get("icon",""), cat["name"]),
             do_del, "Excluir", danger=True)
 
     def add_cat(self):
         uid = MDApp.get_running_app().current_user["id"]
-        self._sel_type = "expense"
-        self._sel_icon = CATEGORIAS[0][1]
-        self._icon_btn = None  # referencia ao botao de icone selecionado
+        self._sel_type  = "expense"
+        self._sel_emoji = "💰"
 
-        # Altura: nome + tipo + grid (4 linhas * 52dp) + icone selecionado + padding
         content = MDBoxLayout(orientation="vertical", spacing=dp(8),
-                              size_hint_y=None, height=dp(380), padding=[0, dp(8), 0, 0])
+                              size_hint_y=None, height=dp(340), padding=[0, dp(8), 0, 0])
 
         f_name = MDTextField(hint_text="Nome da categoria", mode="rectangle",
                              size_hint_y=None, height=dp(52))
@@ -142,49 +135,42 @@ class CategoriesScreen(MDScreen):
             menu.open()
         btn_type.bind(on_release=open_type)
 
-        # Label icone selecionado
-        selected_lbl = MDLabel(
-            text="Icone selecionado: {}".format(self._sel_icon),
-            font_style="Caption", theme_text_color="Custom",
-            text_color=(0.39,0.40,0.95,1),
-            size_hint_y=None, height=dp(22))
+        # Emoji selecionado (mostra o atual)
+        self._emoji_lbl = MDRaisedButton(
+            text="Emoji: {}".format(self._sel_emoji),
+            size_hint=(1,None), height=dp(44), md_bg_color=CARD_BG)
 
-        # Grid de icones — usa texto curto sem emoji para garantir renderizacao
-        grid_lbl = MDLabel(text="Escolher icone:", font_style="Overline",
-                           theme_text_color="Secondary",
+        # Grid de emojis com EmojiTile (ButtonBehavior + MDLabel)
+        lbl_pick = MDLabel(text="Toque para escolher o icone:",
+                           font_style="Caption", theme_text_color="Secondary",
                            size_hint_y=None, height=dp(20))
 
-        icon_sv = ScrollView(size_hint=(1,None), height=dp(180), do_scroll_x=False)
-        icon_grid = GridLayout(cols=5, spacing=dp(4), size_hint_y=None, padding=dp(2))
-        icon_grid.bind(minimum_height=icon_grid.setter("height"))
+        emoji_sv = ScrollView(size_hint=(1,None), height=dp(110),
+                              do_scroll_y=True, do_scroll_x=False)
+        grid = GridLayout(cols=7, spacing=dp(4), padding=dp(2),
+                          size_hint_y=None)
+        grid.bind(minimum_height=grid.setter("height"))
 
-        def pick_icon(label, icon, lbl_ref):
-            self._sel_icon = icon
-            lbl_ref.text = "Icone selecionado: {}  {}".format(label, icon)
+        def set_emoji(e):
+            self._sel_emoji = e
+            if self._emoji_lbl:
+                self._emoji_lbl.text = "Emoji: {}".format(e)
 
-        for label, icon in CATEGORIAS:
-            from kivy.uix.button import Button
-            btn_i = Button(
-                text="{}\n{}".format(icon, label),
-                font_size=dp(11),
-                size_hint=(1, None),
-                height=dp(52),
-                background_color=(0.12, 0.13, 0.18, 1),
-                background_normal="",
-                halign="center")
-            btn_i.bind(on_release=lambda x, l=label, ic=icon: pick_icon(l, ic, selected_lbl))
-            icon_grid.add_widget(btn_i)
+        for e in EMOJIS:
+            tile = EmojiTile(text=e)
+            tile.bind(on_release=lambda x, emoji=e: set_emoji(emoji))
+            grid.add_widget(tile)
 
-        icon_sv.add_widget(icon_grid)
+        emoji_sv.add_widget(grid)
 
-        for w in [f_name, btn_type, selected_lbl, grid_lbl, icon_sv]:
+        for w in [f_name, btn_type, lbl_pick, self._emoji_lbl, emoji_sv]:
             content.add_widget(w)
 
         dlg = [None]
         def save(*a):
             if not f_name.text.strip(): return
             CategoryModel.create(uid, f_name.text.strip(), self._sel_type,
-                                 "#6366f1", self._sel_icon)
+                                 "#6366f1", self._sel_emoji)
             dlg[0].dismiss()
             self.refresh()
 
