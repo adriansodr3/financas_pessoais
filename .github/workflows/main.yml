@@ -22,6 +22,15 @@ jobs:
           echo "=== buildozer.spec ==="
           cat buildozer.spec
 
+      - name: Configurar Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Verificar Java
+        run: java -version && echo "JAVA_HOME=$JAVA_HOME"
+
       - name: Configurar Python 3.11
         uses: actions/setup-python@v5
         with:
@@ -33,7 +42,7 @@ jobs:
           sudo apt-get install -y \
             git zip unzip python3-pip autoconf automake libtool \
             pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev \
-            cmake libffi-dev libssl-dev openjdk-17-jdk build-essential
+            cmake libffi-dev libssl-dev build-essential
 
       - name: Instalar buildozer e cython
         run: |
@@ -44,17 +53,19 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.buildozer
-          key: buildozer-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}-v6
+          key: buildozer-${{ runner.os }}-java17-${{ hashFiles('buildozer.spec') }}-v7
           restore-keys: |
-            buildozer-${{ runner.os }}-
+            buildozer-${{ runner.os }}-java17-
 
       - name: Build APK debug
         run: |
+          export JAVA_HOME=$(dirname $(dirname $(readlink -f $(which java))))
+          echo "Usando JAVA_HOME=$JAVA_HOME"
           touch build.log
           yes | buildozer -v android debug 2>&1 | tee build.log
           BUILD_EXIT=${PIPESTATUS[1]}
           echo "=== Exit code: $BUILD_EXIT ==="
-          tail -60 build.log
+          tail -30 build.log
           ls -la bin/ 2>/dev/null || echo "bin/ nao existe"
           exit $BUILD_EXIT
         timeout-minutes: 60
