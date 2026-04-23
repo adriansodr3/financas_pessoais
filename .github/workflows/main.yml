@@ -15,24 +15,17 @@ jobs:
 
       - name: Extrair ZIP se necessario
         run: |
-          echo "=== Conteudo do repositorio ==="
-          ls -la
           if ls *.zip 1>/dev/null 2>&1; then
             echo "ZIP encontrado, extraindo..."
             unzip -o *.zip
             PASTA=$(unzip -l *.zip | awk 'NR==4{print $4}' | cut -d'/' -f1)
-            echo "Pasta extraida: $PASTA"
             if [ -d "$PASTA" ]; then
               cp -r $PASTA/. .
               rm -rf $PASTA
             fi
             rm -f *.zip
-            echo "=== Apos extracao ==="
-            ls -la
-          else
-            echo "Arquivos ja estao na raiz."
           fi
-          cat buildozer.spec || echo "ERRO: buildozer.spec nao encontrado!"
+          ls -la
 
       - name: Configurar Python 3.11
         uses: actions/setup-python@v5
@@ -56,12 +49,13 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.buildozer
-          key: buildozer-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}-v3
+          key: buildozer-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}-v4
           restore-keys: |
             buildozer-${{ runner.os }}-
 
       - name: Build APK debug
-        run: buildozer -v android debug 2>&1 | tee build.log
+        run: |
+          yes | buildozer -v android debug 2>&1 | tee build.log
         timeout-minutes: 60
 
       - name: Upload APK
