@@ -13,19 +13,14 @@ jobs:
       - name: Checkout codigo
         uses: actions/checkout@v4
 
-      - name: Extrair ZIP se necessario
+      - name: Verificar estrutura
         run: |
-          if ls *.zip 1>/dev/null 2>&1; then
-            echo "ZIP encontrado, extraindo..."
-            unzip -o *.zip
-            PASTA=$(unzip -l *.zip | awk 'NR==4{print $4}' | cut -d'/' -f1)
-            if [ -d "$PASTA" ]; then
-              cp -r $PASTA/. .
-              rm -rf $PASTA
-            fi
-            rm -f *.zip
-          fi
+          echo "=== Raiz ==="
           ls -la
+          echo "=== screens/ ==="
+          ls screens/
+          echo "=== buildozer.spec ==="
+          cat buildozer.spec
 
       - name: Configurar Python 3.11
         uses: actions/setup-python@v5
@@ -49,13 +44,19 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.buildozer
-          key: buildozer-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}-v4
+          key: buildozer-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}-v6
           restore-keys: |
             buildozer-${{ runner.os }}-
 
       - name: Build APK debug
         run: |
+          touch build.log
           yes | buildozer -v android debug 2>&1 | tee build.log
+          BUILD_EXIT=${PIPESTATUS[1]}
+          echo "=== Exit code: $BUILD_EXIT ==="
+          tail -60 build.log
+          ls -la bin/ 2>/dev/null || echo "bin/ nao existe"
+          exit $BUILD_EXIT
         timeout-minutes: 60
 
       - name: Upload APK
@@ -67,10 +68,10 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Upload log de erro
+      - name: Upload log sempre
         uses: actions/upload-artifact@v4
-        if: failure()
+        if: always()
         with:
-          name: build-log-erro
+          name: build-log
           path: build.log
           retention-days: 7

@@ -1,1 +1,0 @@
-# financas_pessoais
