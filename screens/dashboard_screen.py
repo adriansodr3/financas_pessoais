@@ -5,15 +5,13 @@ from kivymd.uix.boxlayout import MDBoxLayout
 from kivymd.uix.card import MDCard
 from kivymd.uix.label import MDLabel
 from kivymd.uix.button import MDRaisedButton, MDFlatButton
-from kivymd.uix.list import MDList, TwoLineIconListItem, IconLeftWidget
 from kivymd.uix.dialog import MDDialog
 from kivymd.uix.textfield import MDTextField
 from kivymd.app import MDApp
 
-from screens.widgets import BG, CARD_BG, GREEN, RED, ORANGE, PURPLE, MUTED, WHITE, fmt_currency
+from screens.widgets import confirm_dialog, BG, CARD_BG, GREEN, RED, ORANGE, PURPLE, MUTED, WHITE, fmt_currency
 from utils.helpers import month_label, prev_month, next_month, current_ym, fmt_date, today_str
 from models.transaction import TransactionModel, FixedExpenseModel
-
 
 Builder.load_string("""
 <DashboardScreen>:
@@ -21,9 +19,7 @@ Builder.load_string("""
     md_bg_color: 0.06, 0.07, 0.09, 1
     BoxLayout:
         orientation: "vertical"
-        # Barra de navegacao de mes
         MDBoxLayout:
-            id: nav_bar
             orientation: "horizontal"
             size_hint_y: None
             height: dp(52)
@@ -44,7 +40,6 @@ Builder.load_string("""
             MDIconButton:
                 icon: "calendar-today"
                 on_release: root.go_today()
-        # Conteudo principal
         ScrollView:
             do_scroll_x: False
             MDBoxLayout:
@@ -53,14 +48,12 @@ Builder.load_string("""
                 height: self.minimum_height
                 padding: dp(10), dp(10), dp(10), dp(10)
                 spacing: dp(8)
-                # Cards linha 1
                 MDBoxLayout:
                     orientation: "horizontal"
                     size_hint_y: None
                     height: dp(76)
                     spacing: dp(8)
                     MDCard:
-                        id: card_income
                         md_bg_color: 0.10, 0.11, 0.15, 1
                         radius: [dp(10)]
                         padding: dp(10), dp(8)
@@ -81,7 +74,6 @@ Builder.load_string("""
                             text_color: 0.13, 0.77, 0.37, 1
                             halign: "left"
                     MDCard:
-                        id: card_expense
                         md_bg_color: 0.10, 0.11, 0.15, 1
                         radius: [dp(10)]
                         padding: dp(10), dp(8)
@@ -101,7 +93,6 @@ Builder.load_string("""
                             theme_text_color: "Custom"
                             text_color: 0.94, 0.27, 0.27, 1
                             halign: "left"
-                # Cards linha 2
                 MDBoxLayout:
                     orientation: "horizontal"
                     size_hint_y: None
@@ -167,7 +158,6 @@ Builder.load_string("""
                             theme_text_color: "Custom"
                             text_color: 0.98, 0.60, 0.22, 1
                             halign: "left"
-                # Botoes
                 MDBoxLayout:
                     orientation: "horizontal"
                     size_hint_y: None
@@ -185,19 +175,18 @@ Builder.load_string("""
                         size_hint: 1, None
                         height: dp(44)
                         on_release: root.open_form("expense")
-                # Label
                 MDLabel:
-                    text: "Lancamentos"
+                    text: "LANCAMENTOS"
                     font_style: "Overline"
                     theme_text_color: "Secondary"
                     size_hint_y: None
                     height: dp(28)
-                    halign: "left"
-                # Lista
-                MDList:
-                    id: tx_list
+                MDBoxLayout:
+                    id: tx_box
+                    orientation: "vertical"
                     size_hint_y: None
                     height: self.minimum_height
+                    spacing: dp(4)
 """)
 
 
@@ -205,64 +194,99 @@ class DashboardScreen(MDScreen):
     def __init__(self, **kw):
         super().__init__(**kw)
         self.year, self.month = current_ym()
-        self._built = False
 
     def on_enter(self):
         self.refresh()
 
     def refresh(self):
-        app = MDApp.get_running_app()
-        if not hasattr(app, 'current_user') or not app.current_user:
-            return
-        uid = app.current_user["id"]
-        self.ids.month_lbl.text = month_label(self.year, self.month)
+        try:
+            app = MDApp.get_running_app()
+            if not hasattr(app, 'current_user') or not app.current_user:
+                return
+            uid = app.current_user["id"]
+            self.ids.month_lbl.text = month_label(self.year, self.month)
 
-        FixedExpenseModel.materialize_for_month(uid, self.year, self.month)
-        txs     = TransactionModel.get_by_period(uid, self.year, self.month)
-        income  = sum(t["amount"] for t in txs if t["type"] == "income")
-        expense = sum(t["amount"] for t in txs if t["type"] == "expense")
-        balance = income - expense
-        prev    = TransactionModel.get_balance_before_month(uid, self.year, self.month)
-        fixed_l = FixedExpenseModel.get_for_month(uid, self.year, self.month)
-        fixed   = sum(f["amount"] for f in fixed_l if f["type"] == "expense")
-        pending = TransactionModel.get_pending_expenses_from(uid, self.year, self.month)
+            FixedExpenseModel.materialize_for_month(uid, self.year, self.month)
+            txs     = TransactionModel.get_by_period(uid, self.year, self.month)
+            income  = sum(t["amount"] for t in txs if t["type"] == "income")
+            expense = sum(t["amount"] for t in txs if t["type"] == "expense")
+            prev    = TransactionModel.get_balance_before_month(uid, self.year, self.month)
+            income_w = income + max(prev, 0)
+            saldo    = income_w - expense
+            fixed_l = FixedExpenseModel.get_for_month(uid, self.year, self.month)
+            fixed   = sum(f["amount"] for f in fixed_l if f["type"] == "expense")
+            pending = TransactionModel.get_pending_expenses_from(uid, self.year, self.month)
 
-        self.ids.lbl_income.text  = fmt_currency(income + max(prev, 0))
-        self.ids.lbl_expense.text = fmt_currency(expense)
-        self.ids.lbl_balance.text = fmt_currency(income_w - expense)
-        self.ids.lbl_balance.text_color = GREEN if (income_w - expense) >= 0 else RED
-        self.ids.lbl_fixed.text   = fmt_currency(fixed)
-        self.ids.lbl_pending.text = fmt_currency(pending)
+            self.ids.lbl_income.text   = fmt_currency(income_w)
+            self.ids.lbl_expense.text  = fmt_currency(expense)
+            self.ids.lbl_balance.text  = fmt_currency(saldo)
+            self.ids.lbl_balance.text_color = GREEN if saldo >= 0 else RED
+            self.ids.lbl_fixed.text    = fmt_currency(fixed)
+            self.ids.lbl_pending.text  = fmt_currency(pending)
 
-        self.ids.tx_list.clear_widgets()
-        for t in txs[:20]:
-            is_inc = t["type"] == "income"
-            badge  = " Fix" if t.get("is_fixed") else (
-                " P{}x".format(t.get("installment_number", "?")) if t.get("installment_id") else "")
-            item = TwoLineIconListItem(
-                text="{}{}".format(t.get("description") or "—", badge),
-                secondary_text="{} | {}".format(
-                    fmt_date(t["date"]), fmt_currency(t["amount"])),
-                on_release=lambda x, td=dict(t): self._on_tx(td))
-            ico = IconLeftWidget(
-                icon="arrow-up-circle-outline" if is_inc else "arrow-down-circle-outline",
-                theme_icon_color="Custom",
-                icon_color=GREEN if is_inc else RED)
-            item.add_widget(ico)
-            self.ids.tx_list.add_widget(item)
+            self._rebuild_tx_list(txs[:20])
+        except Exception as e:
+            from kivy.logger import Logger
+            Logger.exception("FINANCAS: dashboard refresh erro: {}".format(e))
+
+    def _rebuild_tx_list(self, txs):
+        box = self.ids.tx_box
+        box.clear_widgets()
+        for t in txs:
+            box.add_widget(self._make_tx_card(t))
+
+    def _make_tx_card(self, t):
+        is_inc = t["type"] == "income"
+        color  = GREEN if is_inc else RED
+        badge  = " Fix" if t.get("is_fixed") else (
+                 " P{}x".format(t.get("installment_number","?")) if t.get("installment_id") else "")
+        card = MDCard(
+            orientation="horizontal",
+            size_hint_y=None, height=dp(58),
+            md_bg_color=CARD_BG, radius=[dp(8)],
+            padding=[dp(12), dp(6)], spacing=dp(8))
+        # Indicador colorido
+        ind = MDBoxLayout(size_hint=(None,1), width=dp(4),
+                          md_bg_color=color + (1,) if len(color)==3 else color)
+        # Info
+        info = MDBoxLayout(orientation="vertical")
+        lbl_desc = MDLabel(
+            text="{}{}".format(t.get("description") or "—", badge),
+            font_style="Body2", theme_text_color="Custom", text_color=WHITE,
+            size_hint_y=None, height=dp(22), shorten=True, shorten_from="right")
+        lbl_meta = MDLabel(
+            text="{} | {}".format(fmt_date(t["date"]), t.get("category_name") or "—"),
+            font_style="Caption", theme_text_color="Secondary",
+            size_hint_y=None, height=dp(18))
+        info.add_widget(lbl_desc)
+        info.add_widget(lbl_meta)
+        # Valor
+        lbl_val = MDLabel(
+            text=fmt_currency(t["amount"]),
+            font_style="Body1", theme_text_color="Custom", text_color=color,
+            size_hint=(None,1), width=dp(90), halign="right")
+        card.add_widget(ind)
+        card.add_widget(info)
+        card.add_widget(lbl_val)
+        card.bind(on_release=lambda x, td=dict(t): self._on_tx(td))
+        return card
 
     def _on_tx(self, t):
         uid = MDApp.get_running_app().current_user["id"]
+        tipo = "Entrada" if t["type"] == "income" else "Despesa"
         def do_del():
-            TransactionModel.delete(t["id"], uid)
+            if bool(t.get("is_fixed")):
+                feid = t.get("fixed_expense_id")
+                if feid:
+                    TransactionModel.delete_fixed_month(uid, t["id"], feid, self.year, self.month)
+                else:
+                    TransactionModel.delete(t["id"], uid)
+            else:
+                TransactionModel.delete(t["id"], uid)
             self.refresh()
-        from screens.widgets import confirm_dialog
         confirm_dialog(
-            "Excluir",
-            "{}: {}\n{}".format(
-                "Entrada" if t["type"]=="income" else "Despesa",
-                fmt_currency(t["amount"]),
-                t.get("description", "")),
+            "{}: {}".format(tipo, fmt_currency(t["amount"])),
+            "{}\n{}".format(t.get("description",""), fmt_date(t["date"])),
             do_del, "Excluir", danger=True)
 
     def open_form(self, type_):
@@ -273,55 +297,42 @@ class DashboardScreen(MDScreen):
         self._sel_cat = opts[0][0] if opts else None
 
         content = MDBoxLayout(orientation="vertical", spacing=dp(8),
-                              size_hint_y=None, height=dp(220), padding=[0, dp(8), 0, 0])
+                              size_hint_y=None, height=dp(220), padding=[0,dp(8),0,0])
         f_amt  = MDTextField(hint_text="Valor (ex: 150.00)", mode="rectangle",
                              input_filter="float", size_hint_y=None, height=dp(52))
-        f_desc = MDTextField(hint_text="Descricao", mode="rectangle",
-                             size_hint_y=None, height=dp(52))
-        f_date = MDTextField(hint_text="Data (AAAA-MM-DD)", mode="rectangle",
+        f_desc = MDTextField(hint_text="Descricao", mode="rectangle", size_hint_y=None, height=dp(52))
+        f_date = MDTextField(hint_text="Data AAAA-MM-DD", mode="rectangle",
                              text="{:04d}-{:02d}-01".format(self.year, self.month),
                              size_hint_y=None, height=dp(52))
-        btn_cat = MDRaisedButton(
-            text=opts[0][1] if opts else "Categoria",
-            size_hint=(1, None), height=dp(44), md_bg_color=CARD_BG)
-
+        btn_cat = MDRaisedButton(text=opts[0][1] if opts else "Categoria",
+                                 size_hint=(1,None), height=dp(44), md_bg_color=CARD_BG)
         def open_menu(btn):
             from kivymd.uix.menu import MDDropdownMenu
             items = [{"text": nm, "viewclass": "OneLineListItem",
                       "on_release": lambda cid=cid, n=nm: (
-                          setattr(self, "_sel_cat", cid),
-                          btn.__setattr__("text", n),
-                          menu.dismiss())} for cid, nm in opts]
+                          setattr(self,"_sel_cat",cid),
+                          btn.__setattr__("text",n),
+                          menu.dismiss())} for cid,nm in opts]
             menu = MDDropdownMenu(caller=btn, items=items, width_mult=4)
             menu.open()
         btn_cat.bind(on_release=open_menu)
-
-        for w in [f_amt, f_desc, f_date, btn_cat]:
-            content.add_widget(w)
+        for w in [f_amt, f_desc, f_date, btn_cat]: content.add_widget(w)
         dlg = [None]
-
         def save(*a):
-            try: amt = float(f_amt.text.replace(",", "."))
+            try: amt = float(f_amt.text.replace(",","."))
             except: return
             TransactionModel.create(uid, self._sel_cat, type_, amt,
-                                    f_desc.text.strip(),
-                                    f_date.text.strip() or today_str())
-            dlg[0].dismiss()
-            self.refresh()
-
+                                    f_desc.text.strip(), f_date.text.strip() or today_str())
+            dlg[0].dismiss(); self.refresh()
         dlg[0] = MDDialog(
             title="Nova Entrada" if type_=="income" else "Nova Despesa",
             type="custom", content_cls=content,
-            buttons=[
-                MDFlatButton(text="Cancelar", on_release=lambda x: dlg[0].dismiss()),
-                MDRaisedButton(text="Salvar",
-                               md_bg_color=GREEN if type_=="income" else RED,
-                               on_release=save)])
+            buttons=[MDFlatButton(text="Cancelar", on_release=lambda x: dlg[0].dismiss()),
+                     MDRaisedButton(text="Salvar",
+                                    md_bg_color=GREEN if type_=="income" else RED,
+                                    on_release=save)])
         dlg[0].open()
 
-    def prev_month(self):
-        self.year, self.month = prev_month(self.year, self.month); self.refresh()
-    def next_month(self):
-        self.year, self.month = next_month(self.year, self.month); self.refresh()
-    def go_today(self):
-        self.year, self.month = current_ym(); self.refresh()
+    def prev_month(self): self.year, self.month = prev_month(self.year, self.month); self.refresh()
+    def next_month(self): self.year, self.month = next_month(self.year, self.month); self.refresh()
+    def go_today(self):   self.year, self.month = current_ym();                      self.refresh()

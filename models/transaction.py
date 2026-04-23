@@ -23,30 +23,19 @@ class TransactionModel:
             conn.close()
 
     @staticmethod
-    def get_by_period(user_id, year, month, category_id=None):
+    def get_by_period(user_id, year, month):
         conn = get_connection()
         try:
             start = f"{year:04d}-{month:02d}-01"
-            end = f"{year+1:04d}-01-01" if month == 12 else f"{year:04d}-{month+1:02d}-01"
+            if month == 12:
+                end = f"{year+1:04d}-01-01"
+            else:
+                end = f"{year:04d}-{month+1:02d}-01"
             q = """SELECT t.*,c.name as category_name,c.color,c.icon
                    FROM transactions t LEFT JOIN categories c ON t.category_id=c.id
-                   WHERE t.user_id=? AND t.date>=? AND t.date<?"""
-            params = [user_id, start, end]
-            if category_id:
-                q += " AND t.category_id=?"
-                params.append(category_id)
-            q += " ORDER BY t.date DESC,t.id DESC"
-            return [dict(r) for r in conn.execute(q, params).fetchall()]
-        finally:
-            conn.close()
-
-    @staticmethod
-    def get_all_for_projection(user_id):
-        conn = get_connection()
-        try:
-            rows = conn.execute(
-                "SELECT * FROM transactions WHERE user_id=? ORDER BY date", (user_id,)).fetchall()
-            return [dict(r) for r in rows]
+                   WHERE t.user_id=? AND t.date>=? AND t.date<?
+                   ORDER BY t.date DESC,t.id DESC"""
+            return [dict(r) for r in conn.execute(q, (user_id, start, end)).fetchall()]
         finally:
             conn.close()
 
@@ -73,7 +62,7 @@ class TransactionModel:
                 """SELECT COALESCE(SUM(amount),0) as total FROM transactions
                    WHERE user_id=? AND type='expense' AND date>=? AND is_fixed=0""",
                 (user_id, cutoff)).fetchone()
-            return row["total"] if row else 0.0
+            return float(row["total"]) if row else 0.0
         finally:
             conn.close()
 
@@ -82,7 +71,7 @@ class TransactionModel:
         conn = get_connection()
         try:
             start = f"{year:04d}-{month:02d}-01"
-            end = f"{year:04d}-{month+1:02d}-01" if month < 12 else f"{year+1:04d}-01-01"
+            end = f"{year+1:04d}-01-01" if month == 12 else f"{year:04d}-{month+1:02d}-01"
             rows = conn.execute(
                 """SELECT c.name,c.color,c.icon,t.type,SUM(t.amount) as total
                    FROM transactions t LEFT JOIN categories c ON t.category_id=c.id
@@ -103,17 +92,16 @@ class TransactionModel:
             conn.close()
 
     @staticmethod
-    def update(tid, user_id, category_id, amount, description, date_str, clear_fixed=False):
+    def delete_fixed_month(uid, tx_id, fixed_expense_id, year, month):
+        """Exclui fixo de um mes: marca skipped ANTES de deletar (atomico)."""
+        month_str = f"{year:04d}-{month:02d}"
         conn = get_connection()
         try:
-            if clear_fixed:
-                conn.execute(
-                    "UPDATE transactions SET category_id=?,amount=?,description=?,date=?,is_fixed=0,fixed_expense_id=NULL WHERE id=? AND user_id=?",
-                    (category_id, amount, description, date_str, tid, user_id))
-            else:
-                conn.execute(
-                    "UPDATE transactions SET category_id=?,amount=?,description=?,date=? WHERE id=? AND user_id=?",
-                    (category_id, amount, description, date_str, tid, user_id))
+            conn.execute(
+                "INSERT OR IGNORE INTO fixed_skipped (user_id,fixed_expense_id,month) VALUES (?,?,?)",
+                (uid, fixed_expense_id, month_str))
+            conn.execute(
+                "DELETE FROM transactions WHERE id=? AND user_id=?", (tx_id, uid))
             conn.commit()
         finally:
             conn.close()
@@ -126,6 +114,22 @@ class TransactionModel:
             conn.execute(
                 "INSERT OR IGNORE INTO fixed_skipped (user_id,fixed_expense_id,month) VALUES (?,?,?)",
                 (user_id, fixed_expense_id, month_str))
+            conn.commit()
+        finally:
+            conn.close()
+
+    @staticmethod
+    def update(tid, user_id, category_id, amount, description, date_str, clear_fixed=False):
+        conn = get_connection()
+        try:
+            if clear_fixed:
+                conn.execute(
+                    "UPDATE transactions SET category_id=?,amount=?,description=?,date=?,is_fixed=0,fixed_expense_id=NULL WHERE id=? AND user_id=?",
+                    (category_id, amount, description, date_str, tid, user_id))
+            else:
+                conn.execute(
+                    "UPDATE transactions SET category_id=?,amount=?,description=?,date=? WHERE id=? AND user_id=?",
+                    (category_id, amount, description, date_str, tid, user_id))
             conn.commit()
         finally:
             conn.close()
@@ -166,20 +170,6 @@ class FixedExpenseModel:
         conn = get_connection()
         try:
             conn.execute("UPDATE fixed_expenses SET active=0 WHERE id=? AND user_id=?", (fid, user_id))
-            conn.commit()
-        finally:
-            conn.close()
-
-    @staticmethod
-    def update(fid, user_id, category_id, type_, amount, description):
-        t = _date.today()
-        nm = f"{t.year+1:04d}-01-01" if t.month == 12 else f"{t.year:04d}-{t.month+1:02d}-01"
-        conn = get_connection()
-        try:
-            conn.execute("UPDATE fixed_expenses SET active=0 WHERE id=? AND user_id=?", (fid, user_id))
-            conn.execute(
-                "INSERT INTO fixed_expenses (user_id,category_id,type,amount,description,valid_from) VALUES (?,?,?,?,?,?)",
-                (user_id, category_id, type_, amount, description, nm))
             conn.commit()
         finally:
             conn.close()
@@ -237,7 +227,10 @@ class InstallmentModel:
                 "INSERT INTO installments (user_id,category_id,description,total_amount,installment_amount,total_parcelas,start_date) VALUES (?,?,?,?,?,?,?)",
                 (user_id, category_id, description, total_amount, installment_amount, total_parcelas, start_date))
             iid = c.lastrowid
-            dt = datetime.strptime(start_date, "%Y-%m-%d")
+            try:
+                dt = datetime.strptime(start_date, "%Y-%m-%d")
+            except Exception:
+                dt = datetime.strptime(start_date + "-01", "%Y-%m-%d")
             y, m = dt.year, dt.month
             for i in range(total_parcelas):
                 pd = f"{y:04d}-{m:02d}-01"
@@ -286,8 +279,8 @@ class InstallmentModel:
             rows = conn.execute(
                 "SELECT date,amount FROM transactions WHERE installment_id=? AND user_id=?",
                 (iid, user_id)).fetchall()
-            paid = sum(r["amount"] for r in rows if r["date"] < cutoff)
-            pending = sum(r["amount"] for r in rows if r["date"] >= cutoff)
+            paid    = sum(float(r["amount"]) for r in rows if r["date"] <  cutoff)
+            pending = sum(float(r["amount"]) for r in rows if r["date"] >= cutoff)
             return paid, pending
         finally:
             conn.close()
@@ -300,7 +293,7 @@ class InstallmentModel:
             row = conn.execute(
                 "SELECT COALESCE(SUM(amount),0) as t FROM transactions WHERE installment_id=? AND user_id=?",
                 (iid, user_id)).fetchone()
-            total = row["t"] if row else 0.0
+            total = float(row["t"]) if row else 0.0
             conn.execute("DELETE FROM transactions WHERE installment_id=? AND user_id=?", (iid, user_id))
             conn.execute(
                 "INSERT INTO transactions (user_id,category_id,type,amount,description,date) VALUES (?,?,'expense',?,?,?)",
@@ -317,22 +310,6 @@ class InstallmentModel:
         try:
             conn.execute("DELETE FROM installments WHERE id=? AND user_id=?", (iid, user_id))
             conn.execute("DELETE FROM transactions WHERE installment_id=? AND user_id=?", (iid, user_id))
-            conn.commit()
-        finally:
-            conn.close()
-
-    @staticmethod
-    def delete_fixed_month(uid, tx_id, fixed_expense_id, year, month):
-        """Exclui lancamento fixo de um mes especifico: marca como skipped + deleta (atomico)."""
-        month_str = f"{year:04d}-{month:02d}"
-        conn = get_connection()
-        try:
-            # 1) Marca como pulado ANTES de deletar (evita que materialize recrie)
-            conn.execute(
-                "INSERT OR IGNORE INTO fixed_skipped (user_id,fixed_expense_id,month) VALUES (?,?,?)",
-                (uid, fixed_expense_id, month_str))
-            # 2) Deleta a instancia do mes
-            conn.execute("DELETE FROM transactions WHERE id=? AND user_id=?", (tx_id, uid))
             conn.commit()
         finally:
             conn.close()
