@@ -5,13 +5,12 @@ package.domain = br.com.financas
 source.dir = .
 source.include_exts = py,png,jpg,kv,atlas
 version = 1.0
-requirements = python3,kivy==2.3.0,kivymd==1.2.0,pillow,pyjnius
+requirements = python3,kivy==2.3.0,kivymd==1.2.0,pillow
 orientation = portrait
 fullscreen = 0
-android.permissions = WRITE_EXTERNAL_STORAGE,READ_EXTERNAL_STORAGE,USE_BIOMETRIC,USE_FINGERPRINT
-android.gradle_dependencies = androidx.biometric:biometric:1.1.0
+android.permissions = WRITE_EXTERNAL_STORAGE,READ_EXTERNAL_STORAGE
 android.api = 33
-android.minapi = 23
+android.minapi = 21
 android.ndk = 25b
 android.archs = arm64-v8a
 android.allow_backup = True

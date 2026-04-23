@@ -7,17 +7,6 @@ from kivymd.uix.bottomnavigation import MDBottomNavigation, MDBottomNavigationIt
 from utils.helpers import current_ym
 
 
-# Importar TELAS aqui no topo, fora de qualquer try, para que erros apareçam no log
-from screens.login_screen       import LoginScreen
-from screens.dashboard_screen   import DashboardScreen
-from screens.transactions_screen import TransactionsScreen
-from screens.installments_screen import InstallmentsScreen
-from screens.fixed_screen        import FixedScreen
-from screens.reports_screen      import ReportsScreen
-from screens.categories_screen   import CategoriesScreen
-from screens.profile_screen      import ProfileScreen
-
-
 class MainScreen(MDScreen):
     def __init__(self, **kw):
         super().__init__(**kw)
@@ -26,6 +15,15 @@ class MainScreen(MDScreen):
         self._build_nav()
 
     def _build_nav(self):
+        # Imports dentro do metodo para isolar erros
+        from screens.dashboard_screen    import DashboardScreen
+        from screens.transactions_screen import TransactionsScreen
+        from screens.installments_screen import InstallmentsScreen
+        from screens.fixed_screen        import FixedScreen
+        from screens.reports_screen      import ReportsScreen
+        from screens.categories_screen   import CategoriesScreen
+        from screens.profile_screen      import ProfileScreen
+
         tabs = [
             ("tab_dashboard",    "home-outline",         "Inicio",      DashboardScreen()),
             ("tab_transactions", "format-list-bulleted", "Lancamentos", TransactionsScreen()),
@@ -35,12 +33,14 @@ class MainScreen(MDScreen):
             ("tab_categories",   "tag-outline",          "Categorias",  CategoriesScreen()),
             ("tab_profile",      "account-outline",      "Perfil",      ProfileScreen()),
         ]
+
         nav = MDBottomNavigation(panel_color=(0.10, 0.11, 0.15, 1))
         for tab_name, icon, text, screen in tabs:
             item = MDBottomNavigationItem(name=tab_name, text=text, icon=icon)
             item.add_widget(screen)
             nav.add_widget(item)
             self._screens[tab_name] = screen
+
         nav.bind(current=self._on_tab_switch)
         self.add_widget(nav)
 
@@ -53,15 +53,21 @@ class MainScreen(MDScreen):
                 Logger.warning("FINANCAS: refresh {} erro: {}".format(tab_name, e))
 
     def on_enter_app(self):
-        dash = self._screens.get("tab_dashboard")
-        if dash:
-            dash.year, dash.month = current_ym()
-            dash.refresh()
+        try:
+            dash = self._screens.get("tab_dashboard")
+            if dash:
+                dash.year, dash.month = current_ym()
+                dash.refresh()
+        except Exception as e:
+            Logger.exception("FINANCAS: on_enter_app erro: {}".format(e))
 
     def refresh_dashboard(self):
-        dash = self._screens.get("tab_dashboard")
-        if dash:
-            dash.refresh()
+        try:
+            dash = self._screens.get("tab_dashboard")
+            if dash:
+                dash.refresh()
+        except Exception as e:
+            Logger.warning("FINANCAS: refresh_dashboard erro: {}".format(e))
 
 
 class FinancasApp(MDApp):
@@ -75,6 +81,7 @@ class FinancasApp(MDApp):
         self.theme_cls.primary_palette = "Indigo"
         self.theme_cls.accent_palette = "Green"
         sm = ScreenManager(transition=NoTransition())
+        from screens.login_screen import LoginScreen
         sm.add_widget(LoginScreen())
         sm.add_widget(MainScreen())
         return sm
