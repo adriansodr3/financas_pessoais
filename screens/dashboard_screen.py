@@ -2,14 +2,13 @@ from kivy.uix.scrollview import ScrollView
 from kivy.metrics import dp
 from kivymd.uix.screen import MDScreen
 from kivymd.uix.boxlayout import MDBoxLayout
-from kivymd.uix.gridlayout import MDGridLayout
+from kivy.uix.gridlayout import GridLayout
 from kivymd.uix.card import MDCard
 from kivymd.uix.label import MDLabel
 from kivymd.uix.button import MDRaisedButton, MDFlatButton, MDIconButton
 from kivymd.uix.list import MDList, TwoLineIconListItem, IconLeftWidget
 from kivymd.uix.dialog import MDDialog
 from kivymd.uix.textfield import MDTextField
-from kivymd.uix.spinner import Spinner
 from kivymd.app import MDApp
 
 from screens.widgets import (summary_card, update_card, month_nav_bar,
@@ -46,7 +45,7 @@ class DashboardScreen(MDScreen):
         content.bind(minimum_height=content.setter("height"))
 
         # Cards linha 1
-        row1 = MDGridLayout(cols=2, spacing=8, size_hint_y=None, height=dp(88))
+        row1 = GridLayout(cols=2, spacing=8, size_hint_y=None, height=dp(88))
         self.c_income = summary_card("ENTRADAS+SALDO ANT.", 0, GREEN)
         self.c_expense = summary_card("SAIDAS DO MES", 0, RED)
         row1.add_widget(self.c_income)
@@ -54,7 +53,7 @@ class DashboardScreen(MDScreen):
         content.add_widget(row1)
 
         # Cards linha 2
-        row2 = MDGridLayout(cols=3, spacing=8, size_hint_y=None, height=dp(88))
+        row2 = GridLayout(cols=3, spacing=8, size_hint_y=None, height=dp(88))
         self.c_balance = summary_card("SALDO", 0, PURPLE)
         self.c_fixed = summary_card("FIXOS", 0, RED)
         self.c_pending = summary_card("FALTA PAGAR", 0, ORANGE)

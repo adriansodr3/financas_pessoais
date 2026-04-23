@@ -5,7 +5,7 @@ from kivymd.uix.boxlayout import MDBoxLayout
 from kivymd.uix.card import MDCard
 from kivymd.uix.label import MDLabel
 from kivymd.uix.button import MDRaisedButton, MDFlatButton, MDFloatingActionButton
-from kivymd.uix.floatlayout import MDFloatLayout
+from kivy.uix.floatlayout import FloatLayout
 from kivymd.uix.dialog import MDDialog
 from kivymd.uix.textfield import MDTextField
 from kivymd.app import MDApp
@@ -31,7 +31,7 @@ class InstallmentsScreen(MDScreen):
         self.refresh()
 
     def _build(self):
-        root = MDFloatLayout(md_bg_color=BG)
+        root = FloatLayout(md_bg_color=BG)
         col = MDBoxLayout(orientation="vertical", md_bg_color=BG, size_hint=(1, 1))
 
         # Header

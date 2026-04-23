@@ -3,21 +3,28 @@ import os
 
 
 def _get_db_path():
+    """Caminho do banco - usa user_data_dir no Android, pasta local no desktop."""
     try:
         from kivy.app import App
         app = App.get_running_app()
-        if app and hasattr(app, 'user_data_dir'):
+        if app and hasattr(app, 'user_data_dir') and app.user_data_dir:
             d = app.user_data_dir
             os.makedirs(d, exist_ok=True)
             return os.path.join(d, 'financas.db')
     except Exception:
         pass
-    base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    return os.path.join(base, 'financas.db')
+
+    # Fallback para desktop
+    try:
+        base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        return os.path.join(base, 'financas.db')
+    except Exception:
+        return os.path.join(os.getcwd(), 'financas.db')
 
 
 def get_connection():
-    conn = sqlite3.connect(_get_db_path())
+    path = _get_db_path()
+    conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
@@ -39,7 +46,7 @@ def init_db():
             name TEXT NOT NULL,
             type TEXT NOT NULL CHECK(type IN ('income','expense')),
             color TEXT DEFAULT '#6366f1',
-            icon TEXT DEFAULT '💰',
+            icon TEXT DEFAULT '?',
             FOREIGN KEY(user_id) REFERENCES users(id),
             UNIQUE(user_id, name, type)
         );
