@@ -1,7 +1,7 @@
 from kivy.uix.scrollview import ScrollView
+from kivy.metrics import dp
 from kivymd.uix.screen import MDScreen
 from kivymd.uix.boxlayout import MDBoxLayout
-from kivymd.uix.card import MDCard
 from kivymd.uix.label import MDLabel
 from kivymd.uix.textfield import MDTextField
 from kivymd.uix.button import MDRaisedButton, MDFlatButton
@@ -13,64 +13,89 @@ class LoginScreen(MDScreen):
     def __init__(self, **kw):
         super().__init__(**kw)
         self.name = "login"
+        self._register_mode = False
         self._build()
 
     def _build(self):
-        root = MDBoxLayout(orientation="vertical", padding=24, spacing=16,
-                           md_bg_color=(0.06, 0.07, 0.09, 1))
-        root.add_widget(MDLabel(size_hint_y=None, height=40))
+        # ScrollView como raiz garante funcionamento em qualquer tamanho de tela
+        sv = ScrollView(size_hint=(1, 1))
 
-        card = MDCard(orientation="vertical", padding=28, spacing=16,
-                      size_hint=(1, None), height=480,
-                      md_bg_color=(0.10, 0.11, 0.15, 1),
-                      radius=[16])
+        root = MDBoxLayout(
+            orientation="vertical",
+            padding=[dp(32), dp(60), dp(32), dp(32)],
+            spacing=dp(16),
+            size_hint_y=None,
+            md_bg_color=(0.06, 0.07, 0.09, 1)
+        )
+        root.bind(minimum_height=root.setter("height"))
 
-        icon_lbl = MDLabel(text="💰  Financas Pessoais",
-                           halign="center", font_style="H5",
-                           theme_text_color="Custom",
-                           text_color=(0.89, 0.91, 0.94, 1),
-                           size_hint_y=None, height=56)
+        # Logo e titulo
+        root.add_widget(MDLabel(
+            text="[size=48]💰[/size]",
+            markup=True, halign="center",
+            size_hint_y=None, height=dp(64)))
 
-        sub = MDLabel(text="Controle financeiro familiar",
-                      halign="center", font_style="Caption",
-                      theme_text_color="Secondary",
-                      size_hint_y=None, height=28)
+        root.add_widget(MDLabel(
+            text="Financas Pessoais",
+            halign="center", font_style="H5",
+            theme_text_color="Custom",
+            text_color=(0.89, 0.91, 0.94, 1),
+            size_hint_y=None, height=dp(40)))
 
-        self.tab_lbl = MDLabel(text="ENTRAR",
-                               halign="center", font_style="Overline",
-                               theme_text_color="Custom",
-                               text_color=(0.39, 0.40, 0.95, 1),
-                               size_hint_y=None, height=24)
+        root.add_widget(MDLabel(
+            text="Controle financeiro familiar",
+            halign="center", font_style="Caption",
+            theme_text_color="Secondary",
+            size_hint_y=None, height=dp(24)))
 
-        self.field_user = MDTextField(hint_text="Usuario", mode="rectangle",
-                                      size_hint_y=None, height=48)
-        self.field_pass = MDTextField(hint_text="Senha", mode="rectangle",
-                                      password=True, size_hint_y=None, height=48)
-        self.field_pass2 = MDTextField(hint_text="Confirmar Senha", mode="rectangle",
-                                       password=True, size_hint_y=None, height=48)
+        root.add_widget(MDLabel(size_hint_y=None, height=dp(16)))
+
+        self.tab_lbl = MDLabel(
+            text="ENTRAR",
+            halign="center", font_style="Overline",
+            theme_text_color="Custom",
+            text_color=(0.39, 0.40, 0.95, 1),
+            size_hint_y=None, height=dp(24))
+        root.add_widget(self.tab_lbl)
+
+        self.field_user = MDTextField(
+            hint_text="Usuario", mode="rectangle",
+            size_hint_y=None, height=dp(56))
+        root.add_widget(self.field_user)
+
+        self.field_pass = MDTextField(
+            hint_text="Senha", mode="rectangle",
+            password=True, size_hint_y=None, height=dp(56))
+        root.add_widget(self.field_pass)
+
+        self.field_pass2 = MDTextField(
+            hint_text="Confirmar Senha", mode="rectangle",
+            password=True, size_hint_y=None, height=dp(56))
         self.field_pass2.opacity = 0
         self.field_pass2.disabled = True
+        root.add_widget(self.field_pass2)
 
-        self.msg = MDLabel(text="", halign="center", font_style="Caption",
-                           theme_text_color="Error",
-                           size_hint_y=None, height=24)
+        self.msg = MDLabel(
+            text="", halign="center", font_style="Caption",
+            theme_text_color="Error",
+            size_hint_y=None, height=dp(24))
+        root.add_widget(self.msg)
 
-        self.btn_main = MDRaisedButton(text="Entrar", size_hint_x=1,
-                                       md_bg_color=(0.39, 0.40, 0.95, 1),
-                                       on_release=self._on_main)
-        self.btn_switch = MDFlatButton(text="Criar nova conta", size_hint_x=1,
-                                       on_release=self._toggle_mode)
+        self.btn_main = MDRaisedButton(
+            text="Entrar",
+            size_hint=(1, None), height=dp(48),
+            md_bg_color=(0.39, 0.40, 0.95, 1),
+            on_release=self._on_main)
+        root.add_widget(self.btn_main)
 
-        self._register_mode = False
+        self.btn_switch = MDFlatButton(
+            text="Criar nova conta",
+            size_hint=(1, None), height=dp(40),
+            on_release=self._toggle_mode)
+        root.add_widget(self.btn_switch)
 
-        for w in [icon_lbl, sub, self.tab_lbl, self.field_user,
-                  self.field_pass, self.field_pass2, self.msg,
-                  self.btn_main, self.btn_switch]:
-            card.add_widget(w)
-
-        root.add_widget(card)
-        root.add_widget(MDLabel(size_hint_y=1))
-        self.add_widget(root)
+        sv.add_widget(root)
+        self.add_widget(sv)
 
     def _toggle_mode(self, *a):
         self._register_mode = not self._register_mode
@@ -100,7 +125,7 @@ class LoginScreen(MDScreen):
                 self.msg.text = "Senhas nao coincidem."
                 return
             if len(p) < 4:
-                self.msg.text = "Senha deve ter ao menos 4 caracteres."
+                self.msg.text = "Senha: minimo 4 caracteres."
                 return
             try:
                 UserModel.create(u, p)
@@ -119,5 +144,6 @@ class LoginScreen(MDScreen):
     def on_pre_enter(self):
         self.field_user.text = ""
         self.field_pass.text = ""
-        self.field_pass2.text = ""
+        if hasattr(self, 'field_pass2'):
+            self.field_pass2.text = ""
         self.msg.text = ""
