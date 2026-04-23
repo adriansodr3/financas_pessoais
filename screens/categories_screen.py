@@ -2,11 +2,12 @@ from kivy.lang import Builder
 from kivy.metrics import dp
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.gridlayout import GridLayout
-from kivy.uix.button import Button
+from kivy.uix.behaviors import ButtonBehavior
 from kivymd.uix.screen import MDScreen
 from kivymd.uix.boxlayout import MDBoxLayout
 from kivymd.uix.label import MDLabel
 from kivymd.uix.button import MDRaisedButton, MDFlatButton
+from kivymd.uix.card import MDCard
 from kivymd.uix.list import MDList, OneLineIconListItem, IconLeftWidget
 from kivymd.uix.dialog import MDDialog
 from kivymd.uix.textfield import MDTextField
@@ -16,11 +17,34 @@ from screens.widgets import confirm_dialog, BG, CARD_BG, PURPLE, GREEN, RED, WHI
 from models.category import CategoryModel
 
 EMOJIS = [
-    "💰","💸","🏠","🛒","🚗","❤","📚","🎉","📋","💻",
-    "🍕","🎮","👕","💊","✈","📱","🎵","🐾","🌿","💼",
-    "🏋","🎓","🎬","☕","🔧","🎸","🌟","⛽","🏥","💡",
-    "🎁","🍔","🧴","🐶","🔑","🎯","🧾","🚌","💈","📦",
+    "Casa",    "Carro",  "Comida", "Saude",  "Estudo",
+    "Lazer",   "Roupa",  "Viagem", "Pet",    "Trabalho",
+    "Conta",   "Outro",  "Invest", "Gym",    "Tech",
+    "Musica",  "Cafe",   "Bar",    "Farm",   "Kids",
 ]
+
+EMOJI_ICONS = {
+    "Casa":    "home-outline",
+    "Carro":   "car-outline",
+    "Comida":  "food-outline",
+    "Saude":   "heart-pulse",
+    "Estudo":  "book-outline",
+    "Lazer":   "gamepad-variant-outline",
+    "Roupa":   "tshirt-crew-outline",
+    "Viagem":  "airplane-outline",
+    "Pet":     "paw-outline",
+    "Trabalho":"briefcase-outline",
+    "Conta":   "file-document-outline",
+    "Outro":   "dots-horizontal",
+    "Invest":  "trending-up",
+    "Gym":     "dumbbell",
+    "Tech":    "laptop",
+    "Musica":  "music-note",
+    "Cafe":    "coffee-outline",
+    "Bar":     "glass-mug-variant",
+    "Farm":    "pharmacy",
+    "Kids":    "baby-face-outline",
+}
 
 Builder.load_string("""
 <CategoriesScreen>:
@@ -43,10 +67,13 @@ Builder.load_string("""
                     padding_x: dp(16)
             ScrollView:
                 do_scroll_x: False
-                MDList:
-                    id: cat_list
+                MDBoxLayout:
+                    id: cat_box
+                    orientation: "vertical"
                     size_hint_y: None
                     height: self.minimum_height
+                    padding: dp(8), dp(8), dp(8), dp(80)
+                    spacing: dp(4)
         MDFloatingActionButton:
             icon: "plus"
             md_bg_color: 0.39, 0.40, 0.95, 1
@@ -59,47 +86,85 @@ class CategoriesScreen(MDScreen):
     def __init__(self, **kw):
         super().__init__(**kw)
         self._sel_type  = "expense"
-        self._sel_emoji = "💰"
-        self._emoji_btn = None
+        self._sel_icon  = "dots-horizontal"
+        self._icon_btn  = None
 
     def refresh(self):
-        app = MDApp.get_running_app()
-        if not hasattr(app, 'current_user') or not app.current_user:
-            return
-        uid = app.current_user["id"]
-        self.ids.cat_list.clear_widgets()
-        for cat in CategoryModel.get_all(uid):
-            is_inc = cat["type"] == "income"
-            item = OneLineIconListItem(
-                text="{} {}  [{}]".format(
-                    cat.get("icon",""), cat["name"],
-                    "Entrada" if is_inc else "Despesa"),
-                on_release=lambda x, c=dict(cat): self._on_item(c))
-            ico = IconLeftWidget(
-                icon="arrow-up-circle-outline" if is_inc else "arrow-down-circle-outline",
-                theme_icon_color="Custom", icon_color=GREEN if is_inc else RED)
-            item.add_widget(ico)
-            self.ids.cat_list.add_widget(item)
+        try:
+            app = MDApp.get_running_app()
+            if not hasattr(app, 'current_user') or not app.current_user:
+                return
+            uid = app.current_user["id"]
+            box = self.ids.cat_box
+            box.clear_widgets()
+            cats = CategoryModel.get_all(uid)
+            if not cats:
+                box.add_widget(MDLabel(
+                    text="Nenhuma categoria.", halign="center",
+                    theme_text_color="Secondary", size_hint_y=None, height=dp(60)))
+                return
+            for cat in cats:
+                box.add_widget(self._make_card(cat, uid))
+        except Exception as e:
+            from kivy.logger import Logger
+            Logger.exception("FINANCAS: categories refresh: {}".format(e))
 
-    def _on_item(self, cat):
-        uid = MDApp.get_running_app().current_user["id"]
+    def _make_card(self, cat, uid):
+        is_inc = cat["type"] == "income"
+        color  = GREEN if is_inc else RED
+        # Usar icon do MDI em vez de emoji
+        icon_name = cat.get("icon", "dots-horizontal")
+        # Se o icon salvo não for um MDI (é texto curto), usar icone generico
+        if len(icon_name) <= 2 or icon_name in EMOJI_ICONS:
+            icon_name = EMOJI_ICONS.get(icon_name, "dots-horizontal")
+
+        card = MDCard(
+            orientation="horizontal",
+            size_hint_y=None, height=dp(60),
+            md_bg_color=CARD_BG, radius=[dp(8)],
+            padding=[dp(12), dp(6)], spacing=dp(8))
+        ind = MDBoxLayout(size_hint=(None,1), width=dp(4), md_bg_color=color)
+
+        from kivymd.uix.button import MDIconButton
+        ico = MDIconButton(
+            icon=icon_name,
+            theme_icon_color="Custom",
+            icon_color=color,
+            size_hint=(None,None), size=(dp(40),dp(40)),
+            disabled=True)
+
+        info = MDBoxLayout(orientation="vertical")
+        info.add_widget(MDLabel(
+            text=cat["name"],
+            font_style="Body2", theme_text_color="Custom", text_color=WHITE,
+            size_hint_y=None, height=dp(24)))
+        info.add_widget(MDLabel(
+            text="Entrada" if is_inc else "Despesa",
+            font_style="Caption", theme_text_color="Secondary",
+            size_hint_y=None, height=dp(18)))
+
+        card.add_widget(ind)
+        card.add_widget(ico)
+        card.add_widget(info)
+        card.bind(on_release=lambda x, c=dict(cat): self._on_item(c, uid))
+        return card
+
+    def _on_item(self, cat, uid):
         def do_del():
             CategoryModel.delete(cat["id"], uid)
             self.refresh()
         confirm_dialog(
             "Excluir categoria",
-            "{} {}\nLancamentos existentes nao serao afetados.".format(
-                cat.get("icon",""), cat["name"]),
+            "{}\nLancamentos existentes nao serao afetados.".format(cat["name"]),
             do_del, "Excluir", danger=True)
 
     def add_cat(self):
         uid = MDApp.get_running_app().current_user["id"]
-        self._sel_type  = "expense"
-        self._sel_emoji = "💰"
+        self._sel_type = "expense"
+        self._sel_icon = "dots-horizontal"
 
-        # --- conteúdo do dialog ---
-        content = MDBoxLayout(orientation="vertical", spacing=dp(6),
-                              size_hint_y=None, height=dp(360), padding=[0, dp(4), 0, 0])
+        content = MDBoxLayout(orientation="vertical", spacing=dp(8),
+                              size_hint_y=None, height=dp(360), padding=[0, dp(8), 0, 0])
 
         f_name = MDTextField(hint_text="Nome da categoria", mode="rectangle",
                              size_hint_y=None, height=dp(52))
@@ -110,54 +175,67 @@ class CategoriesScreen(MDScreen):
             from kivymd.uix.menu import MDDropdownMenu
             items = [{"text": nm, "viewclass": "OneLineListItem",
                       "on_release": lambda t=tp, n=nm: (
-                          setattr(self, "_sel_type", t),
-                          btn.__setattr__("text", n),
+                          setattr(self,"_sel_type",t),
+                          btn.__setattr__("text",n),
                           btn.__setattr__("md_bg_color", RED if t=="expense" else GREEN),
                           menu.dismiss()
-                      )} for tp, nm in [("expense","Despesa"),("income","Entrada")]]
+                      )} for tp,nm in [("expense","Despesa"),("income","Entrada")]]
             menu = MDDropdownMenu(caller=btn, items=items, width_mult=3)
             menu.open()
         btn_type.bind(on_release=open_type)
 
-        # Emoji selecionado
-        self._emoji_btn = MDRaisedButton(
-            text="Icone selecionado: 💰",
+        # Icone selecionado
+        self._icon_btn = MDRaisedButton(
+            text="Icone: Conta (toque para mudar)",
             size_hint=(1,None), height=dp(44), md_bg_color=CARD_BG)
 
-        lbl = MDLabel(text="Escolha um icone:",
-                      font_style="Caption", theme_text_color="Secondary",
-                      size_hint_y=None, height=dp(20))
+        lbl_pick = MDLabel(
+            text="Escolha o icone da categoria:",
+            font_style="Caption", theme_text_color="Secondary",
+            size_hint_y=None, height=dp(22))
 
-        # Grid de emojis usando Button nativo (mais compatível no Android)
-        sv = ScrollView(size_hint=(1,None), height=dp(120), do_scroll_x=False)
-        grid = GridLayout(cols=8, spacing=dp(2), padding=dp(2), size_hint_y=None)
-        grid.bind(minimum_height=grid.setter("height"))
+        # Grid de icones usando MDIconButton (renderiza corretamente no Android)
+        icon_sv = ScrollView(size_hint=(1,None), height=dp(120), do_scroll_x=False)
+        icon_grid = GridLayout(cols=5, spacing=dp(4), padding=dp(4), size_hint_y=None)
+        icon_grid.bind(minimum_height=icon_grid.setter("height"))
 
-        def make_emoji_btn(e):
-            b = Button(
-                text=e, font_size="20sp",
-                size_hint=(None, None), size=(dp(42), dp(42)),
-                background_normal="", background_color=(0.13,0.14,0.20,1))
-            def on_press(instance, emoji=e):
-                self._sel_emoji = emoji
-                if self._emoji_btn:
-                    self._emoji_btn.text = "Icone selecionado: {}".format(emoji)
-            b.bind(on_release=on_press)
-            return b
+        def select_icon(label, icon_key):
+            self._sel_icon = EMOJI_ICONS[icon_key]
+            if self._icon_btn:
+                self._icon_btn.text = "Icone: {}".format(icon_key)
 
-        for e in EMOJIS:
-            grid.add_widget(make_emoji_btn(e))
+        for label in EMOJIS:
+            icon_key = EMOJI_ICONS[label]
+            row = MDCard(
+                orientation="vertical",
+                size_hint=(None,None), size=(dp(60), dp(68)),
+                md_bg_color=(0.13,0.14,0.20,1), radius=[dp(8)],
+                padding=[0, dp(4)])
 
-        sv.add_widget(grid)
+            from kivymd.uix.button import MDIconButton
+            btn_ico = MDIconButton(
+                icon=icon_key,
+                size_hint=(1,None), height=dp(36))
+            lbl_ico = MDLabel(
+                text=label, halign="center", font_style="Overline",
+                size_hint_y=None, height=dp(20))
 
-        for w in [f_name, btn_type, lbl, self._emoji_btn, sv]:
+            row.add_widget(btn_ico)
+            row.add_widget(lbl_ico)
+            row.bind(on_release=lambda x, lk=label: select_icon(lk, lk))
+            icon_grid.add_widget(row)
+
+        icon_sv.add_widget(icon_grid)
+
+        for w in [f_name, btn_type, lbl_pick, self._icon_btn, icon_sv]:
             content.add_widget(w)
 
         dlg = [None]
         def save(*a):
             if not f_name.text.strip(): return
+            # Salvar o nome do icone MDI
             CategoryModel.create(uid, f_name.text.strip(), self._sel_type,
-                                 "#6366f1", self._sel_emoji)
+                                 "#6366f1", self._sel_icon)
             dlg[0].dismiss()
             self.refresh()
 

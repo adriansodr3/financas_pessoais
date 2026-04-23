@@ -15,7 +15,6 @@ class MainScreen(MDScreen):
         self._build_nav()
 
     def _build_nav(self):
-        # Imports dentro do metodo para isolar erros
         from screens.dashboard_screen    import DashboardScreen
         from screens.transactions_screen import TransactionsScreen
         from screens.installments_screen import InstallmentsScreen
@@ -35,22 +34,25 @@ class MainScreen(MDScreen):
         ]
 
         nav = MDBottomNavigation(panel_color=(0.10, 0.11, 0.15, 1))
+
+        # CORRECAO: on_switch_tabs é o evento correto, não current
+        def on_switch(bottom_nav, bottom_nav_item, item_name):
+            screen = self._screens.get(item_name)
+            if screen and hasattr(screen, 'refresh'):
+                try:
+                    screen.refresh()
+                except Exception as e:
+                    Logger.warning("FINANCAS: refresh {} erro: {}".format(item_name, e))
+
+        nav.bind(on_switch_tabs=on_switch)
+
         for tab_name, icon, text, screen in tabs:
             item = MDBottomNavigationItem(name=tab_name, text=text, icon=icon)
             item.add_widget(screen)
             nav.add_widget(item)
             self._screens[tab_name] = screen
 
-        nav.bind(current=self._on_tab_switch)
         self.add_widget(nav)
-
-    def _on_tab_switch(self, nav, tab_name):
-        screen = self._screens.get(tab_name)
-        if screen and hasattr(screen, 'refresh'):
-            try:
-                screen.refresh()
-            except Exception as e:
-                Logger.warning("FINANCAS: refresh {} erro: {}".format(tab_name, e))
 
     def on_enter_app(self):
         try:
@@ -59,7 +61,7 @@ class MainScreen(MDScreen):
                 dash.year, dash.month = current_ym()
                 dash.refresh()
         except Exception as e:
-            Logger.exception("FINANCAS: on_enter_app erro: {}".format(e))
+            Logger.exception("FINANCAS: on_enter_app: {}".format(e))
 
     def refresh_dashboard(self):
         try:
@@ -67,7 +69,7 @@ class MainScreen(MDScreen):
             if dash:
                 dash.refresh()
         except Exception as e:
-            Logger.warning("FINANCAS: refresh_dashboard erro: {}".format(e))
+            Logger.warning("FINANCAS: refresh_dashboard: {}".format(e))
 
 
 class FinancasApp(MDApp):
