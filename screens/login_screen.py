@@ -77,6 +77,15 @@ Builder.load_string("""
                 height: dp(48)
                 md_bg_color: 0.39, 0.40, 0.95, 1
                 on_release: root.on_main()
+            MDRaisedButton:
+                id: btn_bio
+                text: "Entrar com Digital"
+                size_hint: 1, None
+                height: dp(48)
+                md_bg_color: 0.13, 0.77, 0.37, 1
+                opacity: 0
+                disabled: True
+                on_release: root.on_biometric()
             MDFlatButton:
                 id: btn_switch
                 text: "Criar nova conta"
@@ -91,20 +100,35 @@ class LoginScreen(MDScreen):
         super().__init__(**kw)
         self._register_mode = False
 
+    def on_enter(self):
+        self._check_biometric()
+
+    def _check_biometric(self):
+        try:
+            from utils.biometric import is_available
+            if is_available():
+                self.ids.btn_bio.opacity = 1
+                self.ids.btn_bio.disabled = False
+        except Exception:
+            pass
+
     def toggle_mode(self):
         self._register_mode = not self._register_mode
         if self._register_mode:
-            self.ids.tab_lbl.text   = "CRIAR CONTA"
-            self.ids.btn_main.text  = "Criar Conta"
-            self.ids.btn_switch.text= "Ja tenho conta"
+            self.ids.tab_lbl.text    = "CRIAR CONTA"
+            self.ids.btn_main.text   = "Criar Conta"
+            self.ids.btn_switch.text = "Ja tenho conta"
             self.ids.field_pass2.opacity = 1
             self.ids.field_pass2.disabled = False
+            self.ids.btn_bio.opacity = 0
+            self.ids.btn_bio.disabled = True
         else:
-            self.ids.tab_lbl.text   = "ENTRAR"
-            self.ids.btn_main.text  = "Entrar"
-            self.ids.btn_switch.text= "Criar nova conta"
+            self.ids.tab_lbl.text    = "ENTRAR"
+            self.ids.btn_main.text   = "Entrar"
+            self.ids.btn_switch.text = "Criar nova conta"
             self.ids.field_pass2.opacity = 0
             self.ids.field_pass2.disabled = True
+            self._check_biometric()
         self.ids.msg_lbl.text = ""
 
     def on_main(self):
@@ -130,8 +154,39 @@ class LoginScreen(MDScreen):
         if not user:
             self.ids.msg_lbl.text = "Usuario ou senha incorretos."
             return
+        self._do_login(user)
+
+    def on_biometric(self):
+        app = MDApp.get_running_app()
+        last = UserModel.load_last_username(app.user_data_dir)
+        if not last:
+            self.ids.msg_lbl.text = "Faca login manual primeiro para usar a digital."
+            return
+        self.ids.msg_lbl.text = "Autenticando..."
+
+        def on_success():
+            users = UserModel.list_users()
+            match = next((u for u in users if u["username"] == last), None)
+            if match:
+                from database.schema import get_connection
+                conn = get_connection()
+                row = conn.execute("SELECT * FROM users WHERE username=?", (last,)).fetchone()
+                conn.close()
+                if row:
+                    self._do_login(dict(row))
+                    return
+            self.ids.msg_lbl.text = "Usuario nao encontrado."
+
+        def on_error(msg):
+            self.ids.msg_lbl.text = "Falha: {}".format(msg)
+
+        from utils.biometric import authenticate
+        authenticate(on_success, on_error)
+
+    def _do_login(self, user):
         app = MDApp.get_running_app()
         app.current_user = user
+        UserModel.save_last_username(user["username"], app.user_data_dir)
         app.root.current = "main"
         app.root.get_screen("main").on_enter_app()
 
@@ -141,8 +196,8 @@ class LoginScreen(MDScreen):
         self.ids.field_pass2.text = ""
         self.ids.msg_lbl.text = ""
         self._register_mode = False
-        self.ids.tab_lbl.text   = "ENTRAR"
-        self.ids.btn_main.text  = "Entrar"
-        self.ids.btn_switch.text= "Criar nova conta"
+        self.ids.tab_lbl.text    = "ENTRAR"
+        self.ids.btn_main.text   = "Entrar"
+        self.ids.btn_switch.text = "Criar nova conta"
         self.ids.field_pass2.opacity = 0
         self.ids.field_pass2.disabled = True

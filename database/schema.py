@@ -1,36 +1,39 @@
 import sqlite3
 import os
 
+_DB_PATH = None  # Cache global do caminho
+
 
 def _get_db_path():
-    """Caminho do banco - usa user_data_dir no Android, pasta local no desktop."""
+    """Caminho cacheado — garante sempre o mesmo arquivo."""
+    global _DB_PATH
+    if _DB_PATH:
+        return _DB_PATH
     try:
         from kivy.app import App
         app = App.get_running_app()
         if app and hasattr(app, 'user_data_dir') and app.user_data_dir:
             d = app.user_data_dir
             os.makedirs(d, exist_ok=True)
-            return os.path.join(d, 'financas.db')
+            _DB_PATH = os.path.join(d, 'financas.db')
+            return _DB_PATH
     except Exception:
         pass
-
-    # Fallback para desktop
-    try:
-        base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        return os.path.join(base, 'financas.db')
-    except Exception:
-        return os.path.join(os.getcwd(), 'financas.db')
+    _DB_PATH = os.path.join(os.path.expanduser('~'), 'financas_pessoais.db')
+    return _DB_PATH
 
 
 def get_connection():
-    path = _get_db_path()
-    conn = sqlite3.connect(path)
+    conn = sqlite3.connect(_get_db_path())
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
 
 
 def init_db():
+    global _DB_PATH
+    _DB_PATH = None          # Reseta cache para usar user_data_dir correto
+    _get_db_path()           # Inicializa com App ja rodando
     conn = get_connection()
     c = conn.cursor()
     c.executescript("""
@@ -100,8 +103,8 @@ def init_db():
     cols = [r[1] for r in conn.execute("PRAGMA table_info(transactions)").fetchall()]
     for col, td in [
         ("fixed_expense_id", "INTEGER DEFAULT NULL"),
-        ("installment_id", "INTEGER DEFAULT NULL"),
-        ("installment_number", "INTEGER DEFAULT NULL"),
+        ("installment_id",   "INTEGER DEFAULT NULL"),
+        ("installment_number","INTEGER DEFAULT NULL"),
     ]:
         if col not in cols:
             conn.execute(f"ALTER TABLE transactions ADD COLUMN {col} {td}")

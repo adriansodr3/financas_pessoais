@@ -1,10 +1,11 @@
 from kivy.lang import Builder
 from kivy.metrics import dp
 from kivymd.uix.screen import MDScreen
-from kivymd.uix.dialog import MDDialog
-from kivymd.uix.textfield import MDTextField
 from kivymd.uix.boxlayout import MDBoxLayout
 from kivymd.uix.button import MDRaisedButton, MDFlatButton
+from kivymd.uix.dialog import MDDialog
+from kivymd.uix.textfield import MDTextField
+from kivymd.uix.label import MDLabel
 from kivymd.app import MDApp
 
 Builder.load_string("""
@@ -43,7 +44,7 @@ Builder.load_string("""
                     height: dp(18)
                 MDLabel:
                     id: username_lbl
-                    text: ""
+                    text: "—"
                     font_style: "H6"
                     theme_text_color: "Custom"
                     text_color: 0.89, 0.91, 0.94, 1
@@ -71,7 +72,7 @@ Builder.load_string("""
                     size_hint_y: None
                     height: dp(28)
                 MDLabel:
-                    text: "Versao 1.0  |  Dados armazenados localmente"
+                    text: "Versao 1.0  |  Dados locais no celular"
                     font_style: "Caption"
                     theme_text_color: "Secondary"
                     size_hint_y: None
@@ -89,9 +90,6 @@ Builder.load_string("""
 
 
 class ProfileScreen(MDScreen):
-    def __init__(self, **kw):
-        super().__init__(**kw)
-
     def refresh(self):
         app = MDApp.get_running_app()
         if hasattr(app, 'current_user') and app.current_user:
@@ -107,46 +105,49 @@ class ProfileScreen(MDScreen):
         if not hasattr(app, 'current_user') or not app.current_user:
             return
         uid = app.current_user["id"]
-        content = MDBoxLayout(orientation="vertical", spacing=dp(8),
-                              size_hint_y=None, height=dp(170), padding=[0, dp(8), 0, 0])
-        f_old = MDTextField(hint_text="Senha atual", mode="rectangle",
-                            password=True, size_hint_y=None, height=dp(52))
-        f_new = MDTextField(hint_text="Nova senha", mode="rectangle",
-                            password=True, size_hint_y=None, height=dp(52))
-        f_new2 = MDTextField(hint_text="Confirmar nova senha", mode="rectangle",
-                             password=True, size_hint_y=None, height=dp(52))
-        for w in [f_old, f_new, f_new2]: content.add_widget(w)
+
+        content = MDBoxLayout(orientation="vertical", spacing=dp(10),
+                              size_hint_y=None, height=dp(210), padding=[0, dp(8), 0, 0])
+        f_old  = MDTextField(hint_text="Senha atual",       mode="rectangle", password=True, size_hint_y=None, height=dp(56))
+        f_new  = MDTextField(hint_text="Nova senha",        mode="rectangle", password=True, size_hint_y=None, height=dp(56))
+        f_new2 = MDTextField(hint_text="Confirmar nova",    mode="rectangle", password=True, size_hint_y=None, height=dp(56))
+        msg_lbl = MDLabel(text="", font_style="Caption", theme_text_color="Error",
+                          size_hint_y=None, height=dp(24), halign="center")
+        for w in [f_old, f_new, f_new2, msg_lbl]:
+            content.add_widget(w)
+
         dlg = [None]
-        msg = [None]
 
         def save(*a):
-            from models.user import UserModel, _verify, _hash
+            old  = f_old.text
+            new  = f_new.text
+            new2 = f_new2.text
+            if not old or not new:
+                msg_lbl.text = "Preencha todos os campos."
+                return
+            if new != new2:
+                msg_lbl.text = "Novas senhas nao coincidem."
+                return
+            if len(new) < 4:
+                msg_lbl.text = "Minimo 4 caracteres."
+                return
+            from models.user import UserModel
+            ok = UserModel.change_password(uid, old, new)
+            if not ok:
+                msg_lbl.text = "Senha atual incorreta."
+                return
+            # Atualiza hash no cache
             from database.schema import get_connection
-            user = app.current_user
-            if not _verify(f_old.text, user["password_hash"]):
-                if msg[0]: msg[0].text = "Senha atual incorreta."
-                return
-            if f_new.text != f_new2.text:
-                if msg[0]: msg[0].text = "Senhas nao coincidem."
-                return
-            if len(f_new.text) < 4:
-                if msg[0]: msg[0].text = "Minimo 4 caracteres."
-                return
-            new_hash = _hash(f_new.text)
             conn = get_connection()
-            conn.execute("UPDATE users SET password_hash=? WHERE id=?", (new_hash, uid))
-            conn.commit()
+            row = conn.execute("SELECT password_hash FROM users WHERE id=?", (uid,)).fetchone()
             conn.close()
-            app.current_user["password_hash"] = new_hash
+            if row:
+                app.current_user["password_hash"] = row["password_hash"]
             dlg[0].dismiss()
-
-        lbl_msg = MDLabel(text="", font_style="Caption", theme_text_color="Error",
-                          size_hint_y=None, height=dp(20))
-        msg[0] = lbl_msg
-        content.add_widget(lbl_msg)
 
         dlg[0] = MDDialog(
             title="Alterar Senha", type="custom", content_cls=content,
-            buttons=[MDFlatButton(text="Cancelar", on_release=lambda x: dlg[0].dismiss()),
-                     MDRaisedButton(text="Salvar", md_bg_color=(0.39,0.40,0.95,1), on_release=save)])
+            buttons=[
+                MDFlatButton(text="Cancelar", on_release=lambda x: dlg[0].dismiss()),
+                MDRaisedButton(text="Salvar", md_bg_color=(0.39,0.40,0.95,1), on_release=save)])
         dlg[0].open()

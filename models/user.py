@@ -84,3 +84,44 @@ class UserModel:
             return [dict(r) for r in conn.execute("SELECT id,username FROM users").fetchall()]
         finally:
             conn.close()
+
+    @staticmethod
+    def get_by_username(username: str):
+        conn = get_connection()
+        try:
+            row = conn.execute(
+                "SELECT * FROM users WHERE username=?", (username,)).fetchone()
+            return dict(row) if row else None
+        finally:
+            conn.close()
+
+    @staticmethod
+    def change_password(uid: int, old_password: str, new_password: str) -> bool:
+        conn = get_connection()
+        try:
+            row = conn.execute("SELECT password_hash FROM users WHERE id=?", (uid,)).fetchone()
+            if not row or not _verify(old_password, row["password_hash"]):
+                return False
+            conn.execute("UPDATE users SET password_hash=? WHERE id=?", (_hash(new_password), uid))
+            conn.commit()
+            return True
+        finally:
+            conn.close()
+
+    @staticmethod
+    def save_last_username(username: str, data_dir: str):
+        import json
+        try:
+            with open(data_dir + "/prefs.json", "w") as f:
+                json.dump({"last_user": username}, f)
+        except Exception:
+            pass
+
+    @staticmethod
+    def load_last_username(data_dir: str) -> str:
+        import json
+        try:
+            with open(data_dir + "/prefs.json") as f:
+                return json.load(f).get("last_user", "")
+        except Exception:
+            return ""
