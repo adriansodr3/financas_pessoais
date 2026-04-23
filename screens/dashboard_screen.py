@@ -274,9 +274,16 @@ class DashboardScreen(MDScreen):
     def _on_tx(self, t):
         uid = MDApp.get_running_app().current_user["id"]
         tipo = "Entrada" if t["type"] == "income" else "Despesa"
-        def do_del():
-            if bool(t.get("is_fixed")):
-                feid = t.get("fixed_expense_id")
+        is_fixed = bool(t.get("is_fixed"))
+        dlg = [None]
+        def do_del(*a):
+            if dlg[0]: dlg[0].dismiss()
+            if is_fixed:
+                from database.schema import get_connection
+                conn = get_connection()
+                row = conn.execute("SELECT fixed_expense_id FROM transactions WHERE id=?", (t["id"],)).fetchone()
+                conn.close()
+                feid = (row["fixed_expense_id"] if row else None) or t.get("fixed_expense_id")
                 if feid:
                     TransactionModel.delete_fixed_month(uid, t["id"], feid, self.year, self.month)
                 else:
@@ -284,10 +291,15 @@ class DashboardScreen(MDScreen):
             else:
                 TransactionModel.delete(t["id"], uid)
             self.refresh()
-        confirm_dialog(
-            "{}: {}".format(tipo, fmt_currency(t["amount"])),
-            "{}\n{}".format(t.get("description",""), fmt_date(t["date"])),
-            do_del, "Excluir", danger=True)
+        obs = " [Fixo - somente este mes]" if is_fixed else ""
+        dlg[0] = MDDialog(
+            title="{}: {}".format(tipo, fmt_currency(t["amount"])),
+            text="{}{}\n{}".format(t.get("description",""), obs, fmt_date(t["date"])),
+            buttons=[
+                MDFlatButton(text="Cancelar", on_release=lambda x: dlg[0].dismiss()),
+                MDRaisedButton(text="Excluir", md_bg_color=RED, on_release=do_del),
+            ])
+        dlg[0].open()
 
     def open_form(self, type_):
         uid  = MDApp.get_running_app().current_user["id"]
