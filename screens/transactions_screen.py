@@ -1,13 +1,18 @@
 from kivy.lang import Builder
 from kivy.metrics import dp
+from kivy.uix.scrollview import ScrollView
+from kivy.uix.gridlayout import GridLayout
+from kivy.uix.button import Button
 from kivymd.uix.screen import MDScreen
 from kivymd.uix.boxlayout import MDBoxLayout
 from kivymd.uix.button import MDRaisedButton, MDFlatButton
 from kivymd.uix.list import MDList, TwoLineIconListItem, IconLeftWidget
 from kivymd.uix.dialog import MDDialog
 from kivymd.uix.textfield import MDTextField
+from kivymd.uix.label import MDLabel
 from kivymd.app import MDApp
-from screens.widgets import confirm_dialog, BG, CARD_BG, GREEN, RED, MUTED, WHITE, fmt_currency
+
+from screens.widgets import BG, CARD_BG, PURPLE, GREEN, RED, MUTED, WHITE, fmt_currency
 from utils.helpers import month_label, prev_month, next_month, current_ym, fmt_date, today_str
 from models.transaction import TransactionModel, FixedExpenseModel
 from models.category import CategoryModel
@@ -77,8 +82,8 @@ class TransactionsScreen(MDScreen):
         self.ids.tx_list.clear_widgets()
         for t in txs:
             is_inc = t["type"] == "income"
-            badge = " Fix" if t.get("is_fixed") else (
-                " P{}x".format(t.get("installment_number","?")) if t.get("installment_id") else "")
+            badge = " 📌" if t.get("is_fixed") else (
+                " 🗂{}x".format(t.get("installment_number","?")) if t.get("installment_id") else "")
             item = TwoLineIconListItem(
                 text="{}{}".format(t.get("description") or "—", badge),
                 secondary_text="{} | {} | {}".format(
@@ -93,84 +98,111 @@ class TransactionsScreen(MDScreen):
     def _on_tx(self, t):
         uid = MDApp.get_running_app().current_user["id"]
         tipo = "Entrada" if t["type"] == "income" else "Despesa"
-        is_inst = t.get("installment_id") is not None
+        is_inst  = t.get("installment_id") is not None
         is_fixed = bool(t.get("is_fixed"))
 
-        # Dialogo com opcoes: Editar ou Excluir
-        content = MDBoxLayout(orientation="vertical", spacing=dp(8),
-                              size_hint_y=None, height=dp(60), padding=[0, dp(4), 0, 0])
-        content.add_widget(MDLabel(
-            text="{}: {}  •  {}".format(tipo, fmt_currency(t["amount"]), fmt_date(t["date"])),
-            font_style="Body2", theme_text_color="Custom", text_color=WHITE,
-            size_hint_y=None, height=dp(28)))
-        content.add_widget(MDLabel(
-            text=t.get("description") or "—",
-            font_style="Caption", theme_text_color="Secondary",
-            size_hint_y=None, height=dp(22)))
+        obs = ""
+        if is_fixed:
+            obs = "\n[Lancamento fixo — acao afeta somente este mes]"
+        elif is_inst:
+            obs = "\n[Parcela — nao pode ser editada individualmente]"
 
         dlg = [None]
 
-        def do_edit(*a):
+        def on_close(*a):
             dlg[0].dismiss()
-            self._open_edit(t, uid)
 
-        def do_del(*a):
+        def on_del(*a):
             dlg[0].dismiss()
             TransactionModel.delete(t["id"], uid)
             if is_fixed and t.get("fixed_expense_id"):
-                TransactionModel.mark_fixed_skipped(uid, t["fixed_expense_id"], self.year, self.month)
+                TransactionModel.mark_fixed_skipped(
+                    uid, t["fixed_expense_id"], self.year, self.month)
             self.refresh()
 
-        btns = [MDFlatButton(text="Cancelar", on_release=lambda x: dlg[0].dismiss())]
-        if not is_inst:  # Parcelas nao podem ser editadas individualmente
-            btns.append(MDRaisedButton(text="Editar", md_bg_color=(0.39,0.40,0.95,1), on_release=do_edit))
-        btns.append(MDRaisedButton(text="Excluir", md_bg_color=RED, on_release=do_del))
+        def on_edit(*a):
+            dlg[0].dismiss()
+            self._open_edit(t, uid)
 
-        dlg[0] = MDDialog(title="Lancamento", type="custom", content_cls=content, buttons=btns)
+        # Botoes: sem Editar para parcelas
+        if is_inst:
+            btns = [
+                MDFlatButton(text="Fechar", on_release=on_close),
+                MDRaisedButton(text="Excluir parcela", md_bg_color=RED, on_release=on_del),
+            ]
+        else:
+            btns = [
+                MDFlatButton(text="Fechar", on_release=on_close),
+                MDRaisedButton(text="Editar", md_bg_color=PURPLE, on_release=on_edit),
+                MDRaisedButton(text="Excluir", md_bg_color=RED, on_release=on_del),
+            ]
+
+        dlg[0] = MDDialog(
+            title="{}: {}".format(tipo, fmt_currency(t["amount"])),
+            text="{}  •  {}{}".format(
+                t.get("description") or "—", fmt_date(t["date"]), obs),
+            buttons=btns)
         dlg[0].open()
 
     def _open_edit(self, t, uid):
+        is_fixed = bool(t.get("is_fixed"))
         cats = CategoryModel.get_all(uid, t["type"])
         opts = [(c["id"], "{} {}".format(c.get("icon",""), c["name"])) for c in cats]
         self._sel_cat = t.get("category_id") or (opts[0][0] if opts else None)
-        cur_cat_name = next((nm for cid, nm in opts if cid == self._sel_cat), opts[0][1] if opts else "—")
+        cur_name = next((nm for cid, nm in opts if cid == self._sel_cat),
+                        opts[0][1] if opts else "—")
 
         content = MDBoxLayout(orientation="vertical", spacing=dp(8),
-                              size_hint_y=None, height=dp(270), padding=[0, dp(8), 0, 0])
+                              size_hint_y=None, height=dp(230), padding=[0, dp(8), 0, 0])
         f_amt  = MDTextField(hint_text="Valor", mode="rectangle", input_filter="float",
-                             text=str(t["amount"]), size_hint_y=None, height=dp(52))
+                             text="{:.2f}".format(t["amount"]), size_hint_y=None, height=dp(52))
         f_desc = MDTextField(hint_text="Descricao", mode="rectangle",
                              text=t.get("description") or "", size_hint_y=None, height=dp(52))
         f_date = MDTextField(hint_text="Data (AAAA-MM-DD)", mode="rectangle",
                              text=t["date"], size_hint_y=None, height=dp(52))
-        btn_cat = MDRaisedButton(text=cur_cat_name, size_hint=(1,None), height=dp(44), md_bg_color=CARD_BG)
+        btn_cat = MDRaisedButton(text=cur_name, size_hint=(1,None), height=dp(44), md_bg_color=CARD_BG)
 
         def open_menu(btn):
             from kivymd.uix.menu import MDDropdownMenu
             items = [{"text": nm, "viewclass": "OneLineListItem",
                       "on_release": lambda cid=cid, n=nm: (
-                          setattr(self, "_sel_cat", cid),
-                          btn.__setattr__("text", n),
-                          menu.dismiss())} for cid, nm in opts]
+                          setattr(self,"_sel_cat",cid),
+                          btn.__setattr__("text",n),
+                          menu.dismiss())} for cid,nm in opts]
             menu = MDDropdownMenu(caller=btn, items=items, width_mult=4)
             menu.open()
         btn_cat.bind(on_release=open_menu)
 
-        for w in [f_amt, f_desc, f_date, btn_cat]: content.add_widget(w)
-        dlg = [None]
+        hint = MDLabel(
+            text="Edicao afeta somente este mes" if is_fixed else "",
+            font_style="Caption", theme_text_color="Secondary",
+            size_hint_y=None, height=dp(20))
+        for w in [f_amt, f_desc, f_date, btn_cat, hint]:
+            content.add_widget(w)
 
+        dlg = [None]
         def save(*a):
-            try: amt = float(f_amt.text.replace(",", "."))
+            try: amt = float(f_amt.text.replace(",","."))
             except: return
-            TransactionModel.update(t["id"], uid, self._sel_cat, amt,
-                                    f_desc.text.strip(), f_date.text.strip(),
-                                    clear_fixed=bool(t.get("is_fixed")))
+            date_s = f_date.text.strip() or t["date"]
+            desc_s = f_desc.text.strip()
+
+            if is_fixed and t.get("fixed_expense_id"):
+                # Apaga instancia fixa, pula no mes, cria lancamento avulso editado
+                TransactionModel.delete(t["id"], uid)
+                TransactionModel.mark_fixed_skipped(
+                    uid, t["fixed_expense_id"], self.year, self.month)
+                TransactionModel.create(uid, self._sel_cat, t["type"], amt, desc_s, date_s)
+            else:
+                TransactionModel.update(t["id"], uid, self._sel_cat, amt, desc_s, date_s)
             dlg[0].dismiss()
             self.refresh()
 
-        dlg[0] = MDDialog(title="Editar Lancamento", type="custom", content_cls=content,
-                          buttons=[MDFlatButton(text="Cancelar", on_release=lambda x: dlg[0].dismiss()),
-                                   MDRaisedButton(text="Salvar", md_bg_color=GREEN, on_release=save)])
+        dlg[0] = MDDialog(
+            title="Editar  (este mes)", type="custom", content_cls=content,
+            buttons=[
+                MDFlatButton(text="Cancelar", on_release=lambda x: dlg[0].dismiss()),
+                MDRaisedButton(text="Salvar", md_bg_color=GREEN, on_release=save)])
         dlg[0].open()
 
     def open_form(self, type_):
@@ -192,14 +224,16 @@ class TransactionsScreen(MDScreen):
             from kivymd.uix.menu import MDDropdownMenu
             items = [{"text": nm, "viewclass": "OneLineListItem",
                       "on_release": lambda cid=cid, n=nm: (
-                          setattr(self,"_sel_cat",cid), btn.__setattr__("text",n), menu.dismiss())} for cid,nm in opts]
+                          setattr(self,"_sel_cat",cid),
+                          btn.__setattr__("text",n),
+                          menu.dismiss())} for cid,nm in opts]
             menu = MDDropdownMenu(caller=btn, items=items, width_mult=4)
             menu.open()
         btn_cat.bind(on_release=open_menu)
         for w in [f_amt, f_desc, f_date, btn_cat]: content.add_widget(w)
         dlg = [None]
         def save(*a):
-            try: amt = float(f_amt.text.replace(",", "."))
+            try: amt = float(f_amt.text.replace(",","."))
             except: return
             TransactionModel.create(uid, self._sel_cat, type_, amt,
                                     f_desc.text.strip(), f_date.text.strip() or today_str())
@@ -208,7 +242,9 @@ class TransactionsScreen(MDScreen):
             title="Nova Entrada" if type_=="income" else "Nova Despesa",
             type="custom", content_cls=content,
             buttons=[MDFlatButton(text="Cancelar", on_release=lambda x: dlg[0].dismiss()),
-                     MDRaisedButton(text="Salvar", md_bg_color=GREEN if type_=="income" else RED, on_release=save)])
+                     MDRaisedButton(text="Salvar",
+                                    md_bg_color=GREEN if type_=="income" else RED,
+                                    on_release=save)])
         dlg[0].open()
 
     def prev_month(self): self.year, self.month = prev_month(self.year, self.month); self.refresh()
